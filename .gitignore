@@ -1,0 +1,8 @@
+.vs/* 
+roms/
+*.exe
+*.pdb
+*.obj
+*.ilk
+*.sln
+out.txt
