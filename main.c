@@ -1,6 +1,40 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <stdbool.h>
+
+/* unused for now
+bool isNegative8(uint8_t value){
+	return (value & 0b10000000); // Check for negative number in twos complement
+}
+
+bool isNegative16(uint16_t value){
+	return (value & 0b1000000000000000); // Check for negative number in twos complement
+}
+bool isNegative32(uint32_t value){
+	return (value & 0b10000000000000000000000000000000); // Check for negative number in twos complement
+}
+uint8_t getAbsValueFromTwosComplement8(uint8_t value){
+	if(isNegative8(value)){ 
+		uint8_t inverted = ~value & 0xFF;
+		return inverted + 1;  // Note: 2's complement requires ignoreing overflow, which I guess this does
+	}
+	else {
+		return value;
+	}
+}
+
+uint16_t getAbsValueFromTwosComplement16(uint16_t value){
+	if(isNegative16(value)){ 
+		uint16_t inverted = ~value & 0xFFFF;
+		return inverted + 1;  // Note: 2's complement requires ignoreing overflow, which I guess this does
+	}
+	else {
+		return value;
+	}
+}
+*/
+
 int main(){
 
 	FILE* input = fopen("roms/rom.bin","r");
@@ -13,7 +47,7 @@ int main(){
 	rewind (input);
 
 	uint16_t* instrByteArray = malloc(size);
-	fread(instrByteArray,2,size/2 ,input); //ITS LOADED FINE
+	fread(instrByteArray,2,size/2 ,input);
 	int byteIdx = 0;
 	while(byteIdx != size){
 		uint16_t instruction = *instrByteArray; // 0xbHbL aHaL ie 0x086A 
@@ -134,9 +168,24 @@ int main(){
 				case 0x7:{
 					printf("%x - LDC\n", byteIdx);
 				}break;
-				case 0x8:
-				case 0x9:{
-					printf("%x - ADD\n", byteIdx);
+				case 0x8:{ // ADD.b rn, rm
+					int reg1 = bH & 0b0111;
+					char loOrHiReg1 = (bH & 0b1000) ? 'l' : 'h';
+					int reg2 = bL & 0b0111;
+					char loOrHiReg2 = (bL & 0b1000) ? 'l' : 'h';
+
+					printf("%x - ADD.b r%d%c,r%d%c\n", byteIdx, reg1, loOrHiReg1, reg2, loOrHiReg2); 
+
+					 }break;
+				case 0x9:{ // ADD.w rn, rm
+
+					int reg1 = bH & 0b0111;
+					char loOrHiReg1 = (bH & 0b1000) ? 'e' : 'r';
+					int reg2 = bL & 0b0111;
+					char loOrHiReg2 = (bL & 0b1000) ? 'e' : 'r';
+
+					printf("%x - ADD.w %c%d,%c%d\n", byteIdx, loOrHiReg1, reg1, loOrHiReg2,  reg2); 
+
 				}break;
 				case 0xA:{
 					switch(bH){
@@ -150,8 +199,10 @@ int main(){
 						case 0xC:
 						case 0xD:
 						case 0xE:
-						case 0xF:{
-							printf("%x - ADD\n", byteIdx);
+						case 0xF:{ // ADD.l rn, rm
+								 int reg1 = bH & 0b0111;
+								 int reg2 = bL & 0b0111;
+								 printf("%x - ADD.l er%d, er%d\n", byteIdx, reg1,  reg2); 
 						}break;
 
 					}
@@ -601,14 +652,65 @@ int main(){
 				case 0x8:{
 						printf("%x - MOV\n", byteIdx);
 				}break;
-				case 0x9:
-				case 0xA:{
+				case 0x9:{ 
+
+						 
 					switch(bH){
 						case 0x0:{
 								 printf("%x - MOV\n", byteIdx);
 							 }break;
-						case 0x1:{
-								 printf("%x - ADD\n", byteIdx);
+						case 0x1:{ // ADD.w #xx:16, Rd
+								 instrByteArray+=1;
+								 uint8_t c = *instrByteArray & 0xFF;
+								 uint8_t d = *instrByteArray >> 8;
+								 uint16_t cd = (c << 8) | d;
+
+								 int reg1 = bL & 0b111;
+								 char loOrHiReg1 = (bL & 0b1000) ? 'e' : 'r';
+								 uint16_t hexAdress = cd; 
+								 printf("%x - ADD.w 0x%x,%c%d\n", byteIdx, hexAdress, loOrHiReg1,  reg1); 
+								 byteIdx+=2;
+							 }break;
+						case 0x2:{
+								 printf("%x - CMP\n", byteIdx);
+							 }break;
+						case 0x3:{
+								 printf("%x - SUB \n", byteIdx);
+							 }break;
+						case 0x4:{
+								 printf("%x - OR\n", byteIdx);
+							 }break;
+						case 0x5:{
+								 printf("%x - XOR\n", byteIdx);
+							 }break;
+						case 0x6:{
+								 printf("%x - AND\n", byteIdx);
+							 }break;
+					}
+					 }break;
+
+				case 0xA:{ 
+					switch(bH){
+						case 0x0:{
+								 printf("%x - MOV\n", byteIdx);
+							 }break;
+						case 0x1:{ // ADD.l #xx:32, ERd
+								 instrByteArray+=1;
+								 uint8_t c = *instrByteArray & 0xFF;
+								 uint8_t d = *instrByteArray >> 8;
+								 uint16_t cd = (c << 8) | d;
+								
+								 instrByteArray+=1;
+								 uint8_t e = *instrByteArray & 0xFF;
+								 uint8_t f = *instrByteArray >> 8;
+								 uint16_t ef = (e << 8) | f;
+								
+								 uint32_t cdef = (cd << 16) | ef;
+
+								 int reg1 = bL & 0b111; 
+								 printf("%x - ADD.l 0x%x, er%d\n", byteIdx, cdef,  reg1); 
+								 byteIdx+=4;
+
 							 }break;
 						case 0x2:{
 								 printf("%x - CMP\n", byteIdx);
@@ -634,6 +736,7 @@ int main(){
 				case 0xE:{
 					instrByteArray+=1;
 					uint16_t instructionExtension = *instrByteArray;
+					uint8_t c = instructionExtension  & 0xFF; 
 					uint8_t cH = (instructionExtension  >> 4) & 0xF; //0b BBBB bbbb AAAA aaaa
 					uint8_t cL = instructionExtension & 0xF;
 					byteIdx+=2;
@@ -723,7 +826,13 @@ int main(){
 			}
 		}break;
 		case 0x8:{
-			printf("%x - ADD\n", byteIdx);
+			// ADD.B #xx:8, Rd
+			int reg = aL & 0b0111;
+			char loOrHiReg = (aL & 0b1000) ? 'l' : 'h';
+
+			uint8_t value = (bH << 4) | bL;
+			// To get the actual decimal value well need to call get twosComplement function and the isNegative one, but for now we output as unisgned hex	
+			printf("%x - ADD.b 0x%x,r%d%c\n", byteIdx, value, reg, loOrHiReg); //Note: Dmitry's dissasembler sometimes outputs adress in decimal (0xdd) not sure why
 		}break;
 		case 0x9:{
 			printf("%x - ADDX\n", byteIdx);
