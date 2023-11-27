@@ -35,9 +35,35 @@ uint16_t getAbsValueFromTwosComplement16(uint16_t value){
 }
 */
 
+static uint32_t* er[8];
+static uint16_t* r[8];
+static uint16_t* e[8];
+static uint8_t* rl[8];
+static uint8_t* rh[8];
+
+void printRegistersState(){
+	for(int i=0; i < 8; i++){
+		printf("er%d: [0x%08X], ", i, *er[i]); 
+	}
+	printf("\n\n");
+
+}
+
 int main(){
 
-	FILE* input = fopen("roms/rom.bin","r");
+	// Init general purpose registers
+		for(int i=0; i < 8;i++){
+		er[i] = malloc(4);
+		*er[i] = 0;
+		r[i] = (uint16_t*) er[i];
+		e[i] = (uint16_t*) er[i] + 1;
+		rl[i] = (uint8_t*) r[i];
+		rh[i] = (uint8_t*) r[i] + 1;
+	}
+	*er[1] = 3;
+	*er[5] = 2;
+	*er[6] = 1;
+	FILE* input = fopen("roms/test.bin","r");
 	if(!input){
 		printf("Can't find rom");
 	}
@@ -45,6 +71,8 @@ int main(){
 	fseek (input , 0 , SEEK_END);
 	int size = ftell (input);
 	rewind (input);
+
+	printRegistersState();
 
 	uint16_t* instrByteArray = malloc(size);
 	fread(instrByteArray,2,size/2 ,input);
@@ -168,23 +196,31 @@ int main(){
 				case 0x7:{
 					printf("%x - LDC\n", byteIdx);
 				}break;
-				case 0x8:{ // ADD.b rn, rm
-					int reg1 = bH & 0b0111;
+				case 0x8:{ // ADD.B Rs, Rd
+					int RsIdx = bH & 0b0111;
 					char loOrHiReg1 = (bH & 0b1000) ? 'l' : 'h';
-					int reg2 = bL & 0b0111;
+					int RdIdx = bL & 0b0111;
 					char loOrHiReg2 = (bL & 0b1000) ? 'l' : 'h';
+	
+					uint8_t* Rs = (loOrHiReg1 == 'l') ? rl[RsIdx] : rh[RsIdx]; 
+					uint8_t* Rd = (loOrHiReg2 == 'l') ? rl[RdIdx] : rh[RdIdx]; 
+					*Rd += *Rs;
 
-					printf("%x - ADD.b r%d%c,r%d%c\n", byteIdx, reg1, loOrHiReg1, reg2, loOrHiReg2); 
-
+					printf("%x - ADD.b r%d%c,r%d%c\n", byteIdx, RsIdx, loOrHiReg1, RdIdx, loOrHiReg2); 
+					printRegistersState();
 					 }break;
-				case 0x9:{ // ADD.w rn, rm
+				case 0x9:{ // ADD.W Rs, Rd
 
-					int reg1 = bH & 0b0111;
+					int RsIdx = bH & 0b0111;
 					char loOrHiReg1 = (bH & 0b1000) ? 'e' : 'r';
-					int reg2 = bL & 0b0111;
+					int RdIdx = bL & 0b0111;
 					char loOrHiReg2 = (bL & 0b1000) ? 'e' : 'r';
-
-					printf("%x - ADD.w %c%d,%c%d\n", byteIdx, loOrHiReg1, reg1, loOrHiReg2,  reg2); 
+					
+					uint16_t* Rs = (loOrHiReg1 == 'e') ? e[RsIdx] : r[RsIdx]; 
+					uint16_t* Rd = (loOrHiReg2 == 'e') ? e[RdIdx] : r[RdIdx]; 
+					*Rd += *Rs;
+					printf("%x - ADD.w %c%d,%c%d\n", byteIdx, loOrHiReg1, RsIdx, loOrHiReg2,  RdIdx); 
+					printRegistersState();
 
 				}break;
 				case 0xA:{
@@ -199,10 +235,12 @@ int main(){
 						case 0xC:
 						case 0xD:
 						case 0xE:
-						case 0xF:{ // ADD.l rn, rm
-								 int reg1 = bH & 0b0111;
-								 int reg2 = bL & 0b0111;
-								 printf("%x - ADD.l er%d, er%d\n", byteIdx, reg1,  reg2); 
+						case 0xF:{ // ADD.l ERs, ERd
+								 int ERs = bH & 0b0111;
+								 int ERd = bL & 0b0111;
+								 *er[ERd] += *er[ERs];
+								 printf("%x - ADD.l er%d, er%d\n", byteIdx, ERs,  ERd); 
+								 printRegistersState();
 						}break;
 
 					}
@@ -665,10 +703,14 @@ int main(){
 								 uint8_t d = *instrByteArray >> 8;
 								 uint16_t cd = (c << 8) | d;
 
-								 int reg1 = bL & 0b111;
+								 int RdIdx = bL & 0b111;
 								 char loOrHiReg1 = (bL & 0b1000) ? 'e' : 'r';
-								 uint16_t hexAdress = cd; 
-								 printf("%x - ADD.w 0x%x,%c%d\n", byteIdx, hexAdress, loOrHiReg1,  reg1); 
+
+								 uint16_t* Rd = (loOrHiReg1 == 'e') ? e[RdIdx] : r[RdIdx]; 
+								 *Rd += cd;
+
+								 printf("%x - ADD.w 0x%x,%c%d\n", byteIdx, cd, loOrHiReg1,  RdIdx); 
+								 printRegistersState();
 								 byteIdx+=2;
 							 }break;
 						case 0x2:{
@@ -707,8 +749,10 @@ int main(){
 								
 								 uint32_t cdef = (cd << 16) | ef;
 
-								 int reg1 = bL & 0b111; 
-								 printf("%x - ADD.l 0x%x, er%d\n", byteIdx, cdef,  reg1); 
+								 int ERd = bL & 0b111; 
+								 *er[ERd] += cdef;
+								 printf("%x - ADD.l 0x%x, er%d\n", byteIdx, cdef,  ERd); 
+								 printRegistersState();
 								 byteIdx+=4;
 
 							 }break;
@@ -827,12 +871,15 @@ int main(){
 		}break;
 		case 0x8:{
 			// ADD.B #xx:8, Rd
-			int reg = aL & 0b0111;
+			int RdIdx = aL & 0b0111;
 			char loOrHiReg = (aL & 0b1000) ? 'l' : 'h';
 
 			uint8_t value = (bH << 4) | bL;
 			// To get the actual decimal value well need to call get twosComplement function and the isNegative one, but for now we output as unisgned hex	
-			printf("%x - ADD.b 0x%x,r%d%c\n", byteIdx, value, reg, loOrHiReg); //Note: Dmitry's dissasembler sometimes outputs adress in decimal (0xdd) not sure why
+			uint8_t* Rd = (loOrHiReg == 'l') ? rl[RdIdx] : rh[RdIdx]; 
+			*Rd += value;
+			printf("%x - ADD.b 0x%x,r%d%c\n", byteIdx, value, RdIdx, loOrHiReg); //Note: Dmitry's dissasembler sometimes outputs adress in decimal (0xdd) not sure why
+			printRegistersState();
 		}break;
 		case 0x9:{
 			printf("%x - ADDX\n", byteIdx);

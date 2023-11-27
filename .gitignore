@@ -1,9 +1,11 @@
 .vs/* 
 script.txt
-roms/
+roms/rom.bin
+roms/eeprom.bin
 *.exe
 *.pdb
 *.obj
 *.ilk
 *.sln
+*.bak
 out.txt
