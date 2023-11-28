@@ -35,22 +35,82 @@ uint16_t getAbsValueFromTwosComplement16(uint16_t value){
 }
 */
 
+// General purpose registers
 static uint32_t* er[8];
 static uint16_t* r[8];
 static uint16_t* e[8];
 static uint8_t* rl[8];
 static uint8_t* rh[8];
 
+// CCR Condition Code Register
+// I UI H U N Z V C
+struct Flags{
+	bool I; // Interrupt mask bit
+	bool UI; // User bit
+	bool H; // Half carry flag
+	bool U; // User bit
+	bool N; // Negative flag
+	bool Z; // Zero flag
+	bool V; // Overflow flag
+	bool C; // Carry flag
+};	
+static struct Flags flags;
+
 void printRegistersState(){
 	for(int i=0; i < 8; i++){
 		printf("er%d: [0x%08X], ", i, *er[i]); 
 	}
+	printf("\n");
+	printf("I: %d, H: %d, N: %d, Z: %d, V: %d, C: %d ", flags.I, flags.H, flags.N, flags.Z, flags.V, flags.C);
 	printf("\n\n");
 
 }
 
-int main(){
+void setFlagsADD(uint32_t value1, uint32_t value2, int numberOfBits){
+	uint32_t maxValue;
+	uint32_t maxValueLo;
+	uint32_t negativeFlag;
+	uint32_t halfCarryFlag;
+	switch(numberOfBits){
+		case 8:{
+			       maxValue = 0xFF;
+			       maxValueLo = 0xF;
+			       negativeFlag = 0x80;
+			       halfCarryFlag = 0x8;
 
+			       flags.Z = (uint8_t)(value1 + value2) == 0x0;  
+			       flags.N = (uint8_t)(value1 + value2) & negativeFlag;  
+
+		       }break;
+		case 16:{
+				maxValue = 0xFFFF;
+				maxValueLo = 0xFF;
+				negativeFlag = 0x8000;
+				halfCarryFlag = 0x100;
+
+				flags.Z = (uint16_t)(value1 + value2) == 0x0;  
+				flags.N = (uint16_t)(value1 + value2) & negativeFlag;  
+
+		       }break;
+		case 32:{
+				maxValue = 0xFFFFFFFF;
+				maxValueLo = 0xFFFF;
+				negativeFlag = 0x80000000;
+				halfCarryFlag = 0x10000;
+
+				flags.Z = (uint32_t)(value1 + value2) == 0x0;  
+				flags.N = (uint32_t)(value1 + value2) & negativeFlag;  
+
+
+		       }break;
+	}
+
+	flags.C = ((uint64_t)value1 + value2 > maxValue) ? 1 : 0; 
+	flags.V = ~(value1 ^ value2) & ((value1 + value2) ^ value1) & negativeFlag; // If both operands have the same sign and the results is from a different sign, overflow has occured.
+	flags.H = (((value1 & maxValueLo) + (value2 & maxValueLo) & halfCarryFlag) == halfCarryFlag) ? 1 : 0; 
+}
+
+int main(){
 	// Init general purpose registers
 		for(int i=0; i < 8;i++){
 		er[i] = malloc(4);
@@ -60,10 +120,8 @@ int main(){
 		rl[i] = (uint8_t*) r[i];
 		rh[i] = (uint8_t*) r[i] + 1;
 	}
-	*er[1] = 3;
-	*er[5] = 2;
-	*er[6] = 1;
-	FILE* input = fopen("roms/test.bin","r");
+	flags = (struct Flags){0};
+	FILE* input = fopen("roms/overflow.bin","r");
 	if(!input){
 		printf("Can't find rom");
 	}
@@ -204,6 +262,8 @@ int main(){
 	
 					uint8_t* Rs = (loOrHiReg1 == 'l') ? rl[RsIdx] : rh[RsIdx]; 
 					uint8_t* Rd = (loOrHiReg2 == 'l') ? rl[RdIdx] : rh[RdIdx]; 
+
+					setFlagsADD(*Rd, *Rs, 8);
 					*Rd += *Rs;
 
 					printf("%x - ADD.b r%d%c,r%d%c\n", byteIdx, RsIdx, loOrHiReg1, RdIdx, loOrHiReg2); 
@@ -217,7 +277,10 @@ int main(){
 					char loOrHiReg2 = (bL & 0b1000) ? 'e' : 'r';
 					
 					uint16_t* Rs = (loOrHiReg1 == 'e') ? e[RsIdx] : r[RsIdx]; 
-					uint16_t* Rd = (loOrHiReg2 == 'e') ? e[RdIdx] : r[RdIdx]; 
+					uint16_t* Rd = (loOrHiReg2 == 'e') ? e[RdIdx] : r[RdIdx];
+
+					setFlagsADD(*Rd, *Rs, 16);
+
 					*Rd += *Rs;
 					printf("%x - ADD.w %c%d,%c%d\n", byteIdx, loOrHiReg1, RsIdx, loOrHiReg2,  RdIdx); 
 					printRegistersState();
@@ -236,10 +299,16 @@ int main(){
 						case 0xD:
 						case 0xE:
 						case 0xF:{ // ADD.l ERs, ERd
-								 int ERs = bH & 0b0111;
-								 int ERd = bL & 0b0111;
-								 *er[ERd] += *er[ERs];
-								 printf("%x - ADD.l er%d, er%d\n", byteIdx, ERs,  ERd); 
+								 int RsIdx = bH & 0b0111;
+								 int RdIdx = bL & 0b0111;
+
+								 uint32_t* Rs = er[RsIdx];
+								 uint32_t* Rd = er[RdIdx];
+								 
+								 setFlagsADD(*Rd, *Rs, 32);
+
+								 *Rd += *Rs;
+								 printf("%x - ADD.l er%d, er%d\n", byteIdx, RsIdx,  RdIdx); 
 								 printRegistersState();
 						}break;
 
@@ -644,9 +713,8 @@ int main(){
 			}
 		}break;
 		case 0x7:{
-			switch(aL){
-				uint8_t mostSignificantBit = bH >> 7;
-					
+			 uint8_t mostSignificantBit = bH >> 7;
+			 switch(aL){
 				case 0x0:{
 					printf("%x - BSET\n", byteIdx);
 				}break;
@@ -707,6 +775,8 @@ int main(){
 								 char loOrHiReg1 = (bL & 0b1000) ? 'e' : 'r';
 
 								 uint16_t* Rd = (loOrHiReg1 == 'e') ? e[RdIdx] : r[RdIdx]; 
+
+								 setFlagsADD(*Rd, cd, 16);
 								 *Rd += cd;
 
 								 printf("%x - ADD.w 0x%x,%c%d\n", byteIdx, cd, loOrHiReg1,  RdIdx); 
@@ -749,9 +819,13 @@ int main(){
 								
 								 uint32_t cdef = (cd << 16) | ef;
 
-								 int ERd = bL & 0b111; 
-								 *er[ERd] += cdef;
-								 printf("%x - ADD.l 0x%x, er%d\n", byteIdx, cdef,  ERd); 
+								 int RdIdx = bL & 0b111; 
+								 uint32_t* Rd = er[RdIdx];
+								
+								 setFlagsADD(*Rd, cdef, 32);
+
+								 *Rd += cdef;
+								 printf("%x - ADD.l 0x%x, er%d\n", byteIdx, cdef,  RdIdx); 
 								 printRegistersState();
 								 byteIdx+=4;
 
@@ -877,7 +951,10 @@ int main(){
 			uint8_t value = (bH << 4) | bL;
 			// To get the actual decimal value well need to call get twosComplement function and the isNegative one, but for now we output as unisgned hex	
 			uint8_t* Rd = (loOrHiReg == 'l') ? rl[RdIdx] : rh[RdIdx]; 
+
+			setFlagsADD(*Rd, value, 8);
 			*Rd += value;
+
 			printf("%x - ADD.b 0x%x,r%d%c\n", byteIdx, value, RdIdx, loOrHiReg); //Note: Dmitry's dissasembler sometimes outputs adress in decimal (0xdd) not sure why
 			printRegistersState();
 		}break;

@@ -2,6 +2,7 @@
 script.txt
 roms/rom.bin
 roms/eeprom.bin
+research/*
 *.exe
 *.pdb
 *.obj
