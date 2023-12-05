@@ -2,6 +2,14 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <memory.h>
+
+enum Mode{
+	STEP,
+	RUN
+};
+
+static enum Mode mode;
 
 // General purpose registers
 static uint32_t* ER[8];
@@ -141,6 +149,9 @@ void setFlagsMOV(uint32_t value, int numberOfBits){
 
 int main(){
 	int entry = 0x02C4;
+	mode = RUN;
+	int instructionsToStep = 0;
+
 	// 0x0000 - 0xBFFF - ROM 
 	// 0xF020 - 0xF0FF - MMIO
 	// 0xF780 - 0xFF7F - RAM 
@@ -1663,6 +1674,17 @@ int main(){
 			} break;
 		}
 		pc+=2;
+		if (mode == RUN){
+			continue;
+		} else if(mode == STEP){
+			if (instructionsToStep == 0){
+				scanf(" %d", &instructionsToStep);
+			}
+			instructionsToStep--;
+		}
+
+
+		
 	}
 	fclose(romFile);
 }
