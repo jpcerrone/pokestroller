@@ -140,6 +140,7 @@ void setFlagsMOV(uint32_t value, int numberOfBits){
 }
 
 int main(){
+	int entry = 0x02C4;
 	// 0x0000 - 0xBFFF - ROM 
 	// 0xF020 - 0xF0FF - MMIO
 	// 0xF780 - 0xFF7F - RAM 
@@ -147,7 +148,7 @@ int main(){
 	memory = malloc(64 * 1024);
 	memset(memory, 0, 64 * 1024);
 
-	FILE* romFile = fopen("roms/routines.bin","r");
+	FILE* romFile = fopen("roms/rom.bin","r");
 	if(!romFile){
 		printf("Can't find rom");
 	}
@@ -171,7 +172,7 @@ int main(){
 	flags = (struct Flags){0};
 	printRegistersState();
 
-	int pc = 0;
+	int pc = entry;
 	while(pc != romSize){
 		uint16_t* currentInstruction = (uint16_t*)(memory + pc);
 		// IMPROVEMENT: maybe just use pointers to the ROM, left this way cause it seems cleaner
@@ -765,57 +766,102 @@ int main(){
 
 			}break;
 			case 0x4:{
+				int8_t disp = b;
+
 				switch(aL){
-					case 0x0:{
-						printf("%04x - BRA\n", pc);
+					case 0x0:{ // BRA d:8
+						printf("%04x - BRA %d:8\n", pc, disp);
+						pc += disp; 
 					}break;
-					case 0x1:{
-						printf("%04x - BRN\n", pc);
+					case 0x1:{ // Unused in the ROM
+						printf("%04x - BRN %d:8\n", pc, disp);
 					}break;
 					case 0x2:{
-						printf("%04x - BHI\n", pc);
+						printf("%04x - BHI %d:8\n", pc, disp);
+						if(!(flags.C | flags.Z)){
+							pc += disp;
+						}
 					}break;
 					case 0x3:{
-						printf("%04x - BLS\n", pc);
+						printf("%04x - BLS %d:8\n", pc, disp);
+						if((flags.C | flags.Z)){
+							pc += disp;
+						}
 					}break;
 					case 0x4:{
-						printf("%04x - BCC\n", pc);
+						printf("%04x - BCC %d:8\n", pc, disp);
+						if(!(flags.C)){
+							pc += disp;
+						}
 					}break;
 					case 0x5:{
-						printf("%04x - BCS\n", pc);
+						printf("%04x - BCS %d:8\n", pc, disp);
+						if(flags.C){
+							pc += disp;
+						}
 					}break;
 					case 0x6:{
-						printf("%04x - BNE\n", pc);
+						printf("%04x - BNE %d:8\n", pc, disp);
+						if(!(flags.Z)){
+							pc += disp;
+						}
 					}break;
 					case 0x7:{
-						printf("%04x - BEQ\n", pc);
+						printf("%04x - BEQ %d:8\n", pc, disp);
+						if(flags.Z){
+							pc += disp;
+						}
 					}break;
 					case 0x8:{
-						printf("%04x - BVC\n", pc);
+						printf("%04x - BVC %d:8\n", pc, disp);
+						if(!(flags.V)){
+							pc += disp;
+						}
 					}break;
 					case 0x9:{
-						printf("%04x - BVS\n", pc);
+						printf("%04x - BVS %d:8\n", pc, disp);
+						if(flags.V){
+							pc += disp;
+						}
 					}break;
 					case 0xA:{
-						printf("%04x - BPL\n", pc);
+						printf("%04x - BPL %d:8\n", pc, disp);
+						if(!(flags.N)){
+							pc += disp;
+						}
 					}break;
 					case 0xB:{
-						printf("%04x - BMI\n", pc);
+						printf("%04x - BMI %d:8\n", pc, disp);
+						if(flags.N){
+							pc += disp;
+						}
 					}break;
 					case 0xC:{
-						printf("%04x - BGE\n", pc);
+						printf("%04x - BGE %d:8\n", pc, disp);
+						if(!(flags.N ^ flags.V)){
+							pc += disp;
+						}
 					}break;
 					case 0xD:{
-						printf("%04x - BLT\n", pc);
+						printf("%04x - BLT %d:8\n", pc, disp);
+						if((flags.N ^ flags.V)){
+							pc += disp;
+						}
+
 					}break;
 					case 0xE:{
-						printf("%04x - BGT\n", pc);
+						printf("%04x - BGT %d:8\n", pc, disp);
+						if(!(flags.Z | (flags.N ^ flags.V))){
+							pc += disp;
+						}
+
 					}break;
 					case 0xF:{
-						printf("%04x - BLE\n", pc);
+						printf("%04x - BLE %d:8\n", pc, disp);
+						if(flags.Z | (flags.N ^ flags.V)){
+							pc += disp;
+						}
 					}break;
-
-
 				}
 			}break;
 			case 0x5:{
@@ -836,11 +882,10 @@ int main(){
 					}break;
 					case 0x5:{ // BSR d:8
 						int8_t disp = b;
-
+						printf("%04x - BSR @%d:8\n", pc, disp);
 						*SP -= 2;
 						setMemory16(*SP, pc + 2);
 
-						printf("%04x - BSR @%d:8\n", pc, disp);
 						pc = pc + disp - 2; // Sub 2 cause we're incrementing 2 at the end of the loop
 
 						printMemory(*SP, 2);
@@ -848,10 +893,10 @@ int main(){
 					}break;
 					case 0xC:{ // BSR d:16
 						int16_t disp = cd; 
+						printf("%04x - BSR @%d:16\n", pc, disp);
 						*SP -= 2;
 						setMemory16(*SP, pc + 4);
 
-						printf("%04x - BSR @%d:16\n", pc, disp);
 						pc = pc + disp - 2; // Sub 2 cause we're incrementing 2 at the end of the loop
 
 						printMemory(*SP, 2);
@@ -864,57 +909,140 @@ int main(){
 						printf("%04x - TRAPA\n", pc);
 					}break;
 					case 0x8:{
+						int16_t disp = cd;
 						switch(bH){
 							case 0x0:{
-								printf("%04x - BRA\n", pc);
+								printf("%04x - BRA %d:16\n", pc, disp);
+								pc += 2 + disp;
 							}break;
-							case 0x1:{
-								printf("%04x - BRN\n", pc);
+							case 0x1:{ // Unused in the ROM
+								printf("%04x - BRN %d:16\n", pc, disp);
 							}break;
 							case 0x2:{
-								printf("%04x - BHI\n", pc);
+								printf("%04x - BHI %d:16\n", pc, disp);
+								if(!(flags.C | flags.Z)){
+									pc += 2 + disp;
+								}else{
+									pc += 2;
+								}
 							}break;
 							case 0x3:{
-								printf("%04x - BLS\n", pc);
+								printf("%04x - BLS %d:16\n", pc, disp);
+								if(flags.C | flags.Z){
+									pc += 2 + disp;
+								}else{
+									pc += 2;
+								}
+
 							}break;
 							case 0x4:{
-								printf("%04x - BCC\n", pc);
+								printf("%04x - BCC %d:16\n", pc, disp);
+								if(!flags.C){
+									pc += 2 + disp;
+								}else{
+									pc += 2;
+								}
+
 							}break;
 							case 0x5:{
-								printf("%04x - BCS\n", pc);
+								printf("%04x - BCS %d:16\n", pc, disp);
+								if(flags.C){
+									pc += 2 + disp;
+								}else{
+									pc += 2;
+								}
+
 							}break;
 							case 0x6:{
-								printf("%04x - BNE\n", pc);
+								printf("%04x - BNE %d:16\n", pc, disp);
+								if(!flags.Z){
+									pc += 2 + disp;
+								}else{
+									pc += 2;
+								}
+
 							}break;
 							case 0x7:{
-								printf("%04x - BEQ\n", pc);
+								printf("%04x - BEQ %d:16\n", pc, disp);
+								if(flags.Z){
+									pc += 2 + disp;
+								}else{
+									pc += 2;
+								}
+
 							}break;
 							case 0x8:{
-								printf("%04x - BVC\n", pc);
+								printf("%04x - BVC %d:16\n", pc, disp);
+								if(!flags.V){
+									pc += 2 + disp;
+								}else{
+									pc += 2;
+								}
+
 							}break;
 							case 0x9:{
-								printf("%04x - BVS\n", pc);
+								printf("%04x - BVS %d:16\n", pc, disp);
+								if(flags.V){
+									pc += 2 + disp;
+								}else{
+									pc += 2;
+								}
+
 							}break;
 							case 0xA:{
-								printf("%04x - BPL\n", pc);
+								printf("%04x - BPL %d:16\n", pc, disp);
+								if(!flags.N){
+									pc += 2 + disp;
+								}else{
+									pc += 2;
+								}
+
 							}break;
 							case 0xB:{
-								printf("%04x - BMI\n", pc);
+								printf("%04x - BMI %d:16\n", pc, disp);
+								if(flags.N){
+									pc += 2 + disp;
+								}else{
+									pc += 2;
+								}
+
 							}break;
 							case 0xC:{
-								printf("%04x - BGE\n", pc);
+								printf("%04x - BGE %d:16\n", pc, disp);
+								if(!(flags.N ^ flags.V)){
+									pc += 2 + disp;
+								}else{
+									pc += 2;
+								}
+
 							}break;
 							case 0xD:{
-								printf("%04x - BLT\n", pc);
+								printf("%04x - BLT %d:16\n", pc, disp);
+								if(flags.N ^ flags.V){
+									pc += 2 + disp;
+								}else{
+									pc += 2;
+								}
+
 							}break;
 							case 0xE:{
-								printf("%04x - BGT\n", pc);
+								printf("%04x - BGT %d:16\n", pc, disp);
+								if(!(flags.Z | (flags.N ^ flags.V))){
+									pc += 2 + disp;
+								}else{
+									pc += 2;
+								}
+
 							}break;
 							case 0xF:{
-								printf("%04x - BLE\n", pc);
+								printf("%04x - BLE %d:16\n", pc, disp);
+								if((flags.Z | (flags.N ^ flags.V))){
+									pc += 2 + disp;
+								}else{
+									pc += 2;
+								}
+
 							}break;
-
-
 						}				
 					}break;
 					case 0x9:{ // JMP @ERn
