@@ -87,7 +87,7 @@ uint32_t getMemory32(uint32_t address){
 	return (uint32_t)((memory[address] << 24) | (memory[address + 1] << 16) | (memory[address + 2] << 8) | memory[address + 3]);
 }
 
-void setFlagsADD(int32_t value1, int32_t value2, int numberOfBits){
+void setFlagsADD(uint32_t value1, uint32_t value2, int numberOfBits){
 	uint32_t maxValue;
 	uint32_t maxValueLo;
 	uint32_t negativeFlag;
@@ -99,8 +99,8 @@ void setFlagsADD(int32_t value1, int32_t value2, int numberOfBits){
 			negativeFlag = 0x80;
 			halfCarryFlag = 0x8;
 
-			flags.Z = (int8_t)(value1 + value2) == 0x0;  
-			flags.N = (int8_t)(value1 + value2) & negativeFlag;  
+			flags.Z = (uint8_t)(value1 + value2) == 0x0;  
+			flags.N = (uint8_t)(value1 + value2) & negativeFlag;  
 
 		}break;
 		case 16:{
@@ -109,8 +109,8 @@ void setFlagsADD(int32_t value1, int32_t value2, int numberOfBits){
 			negativeFlag = 0x8000;
 			halfCarryFlag = 0x100;
 
-			flags.Z = (int16_t)(value1 + value2) == 0x0;  
-			flags.N = (int16_t)(value1 + value2) & negativeFlag;  
+			flags.Z = (uint16_t)(value1 + value2) == 0x0;  
+			flags.N = (uint16_t)(value1 + value2) & negativeFlag;  
 
 		}break;
 		case 32:{
@@ -119,8 +119,8 @@ void setFlagsADD(int32_t value1, int32_t value2, int numberOfBits){
 			negativeFlag = 0x80000000;
 			halfCarryFlag = 0x10000;
 
-			flags.Z = (int32_t)(value1 + value2) == 0x0;  
-			flags.N = (int32_t)(value1 + value2) & negativeFlag;  
+			flags.Z = (uint32_t)(value1 + value2) == 0x0;  
+			flags.N = (uint32_t)(value1 + value2) & negativeFlag;  
 
 
 		}break;
@@ -148,8 +148,7 @@ void setFlagsMOV(uint32_t value, int numberOfBits){
 }
 
 int main(){
-	//int entry = 0x02C4;
-	int entry = 0x0;
+	int entry = 0x02C4;
 	mode = RUN;
 	int instructionsToStep = 0;
 
@@ -160,7 +159,7 @@ int main(){
 	memory = malloc(64 * 1024);
 	memset(memory, 0, 64 * 1024);
 
-	FILE* romFile = fopen("roms/ADDl.bin","r");
+	FILE* romFile = fopen("roms/rom.bin","r");
 	if(!romFile){
 		printf("Can't find rom");
 	}
@@ -450,8 +449,8 @@ int main(){
 						int RdIdx = bL & 0b0111;
 						char loOrHiReg2 = (bL & 0b1000) ? 'l' : 'h';
 
-						int8_t* Rs = (loOrHiReg1 == 'l') ? RL[RsIdx] : RH[RsIdx]; 
-						int8_t* Rd = (loOrHiReg2 == 'l') ? RL[RdIdx] : RH[RdIdx]; 
+						uint8_t* Rs = (loOrHiReg1 == 'l') ? RL[RsIdx] : RH[RsIdx]; 
+						uint8_t* Rd = (loOrHiReg2 == 'l') ? RL[RdIdx] : RH[RdIdx]; 
 
 						setFlagsADD(*Rd, *Rs, 8);
 						*Rd += *Rs;
@@ -466,8 +465,8 @@ int main(){
 						int RdIdx = bL & 0b0111;
 						char loOrHiReg2 = (bL & 0b1000) ? 'E' : 'R';
 
-						int16_t* Rs = (loOrHiReg1 == 'E') ? E[RsIdx] : R[RsIdx]; 
-						int16_t* Rd = (loOrHiReg2 == 'E') ? E[RdIdx] : R[RdIdx];
+						uint16_t* Rs = (loOrHiReg1 == 'E') ? E[RsIdx] : R[RsIdx]; 
+						uint16_t* Rd = (loOrHiReg2 == 'E') ? E[RdIdx] : R[RdIdx];
 
 						setFlagsADD(*Rd, *Rs, 16);
 
@@ -492,8 +491,8 @@ int main(){
 								int RsIdx = bH & 0b0111;
 								int RdIdx = bL & 0b0111;
 
-								int32_t* Rs = ER[RsIdx];
-								int32_t* Rd = ER[RdIdx];
+								uint32_t* Rs = ER[RsIdx];
+								uint32_t* Rd = ER[RdIdx];
 
 								setFlagsADD(*Rd, *Rs, 32);
 
@@ -1464,12 +1463,12 @@ int main(){
 								int RdIdx = bL & 0b111;
 								char loOrHiReg1 = (bL & 0b1000) ? 'E' : 'R';
 
-								int16_t* Rd = (loOrHiReg1 == 'E') ? E[RdIdx] : R[RdIdx]; 
+								uint16_t* Rd = (loOrHiReg1 == 'E') ? E[RdIdx] : R[RdIdx]; 
 
 								setFlagsADD(*Rd, cd, 16);
 								*Rd += cd;
 
-								printf("%04x - ADD.w 0x%04x,%c%d\n", pc, (uint16_t)cd, loOrHiReg1,  RdIdx); 
+								printf("%04x - ADD.w 0x%x,%c%d\n", pc, cd, loOrHiReg1,  RdIdx); 
 								printRegistersState();
 								pc+=2;
 							}break;
@@ -1506,12 +1505,12 @@ int main(){
 							}break;
 							case 0x1:{ // ADD.l #xx:32, ERd
 								int RdIdx = bL & 0b111; 
-								int32_t* Rd = ER[RdIdx];
+								uint32_t* Rd = ER[RdIdx];
 
 								setFlagsADD(*Rd, cdef, 32);
 
 								*Rd += cdef;
-								printf("%04x - ADD.l 0x%08x, ER%d\n", pc, (uint32_t)cdef,  RdIdx); 
+								printf("%04x - ADD.l 0x%04x, ER%d\n", pc, cdef,  RdIdx); 
 								printRegistersState();
 								pc+=4;
 
@@ -1622,14 +1621,14 @@ int main(){
 				int RdIdx = aL & 0b0111;
 				char loOrHiReg = (aL & 0b1000) ? 'l' : 'h';
 
-				int8_t value = (bH << 4) | bL;
-				// TODO: should RL be signed? if not I should cast here
-				int8_t* Rd = (loOrHiReg == 'l') ? RL[RdIdx] : RH[RdIdx]; 
+				uint8_t value = (bH << 4) | bL;
+				// To get the actual decimal value well need to call get twosComplement function and the isNegative one, but for now we output as unisgned hex	
+				uint8_t* Rd = (loOrHiReg == 'l') ? RL[RdIdx] : RH[RdIdx]; 
 
 				setFlagsADD(*Rd, value, 8);
 				*Rd += value;
 
-				printf("%04x - ADD.b 0x%02x,R%d%c\n", pc, (uint8_t)value, RdIdx, loOrHiReg); //Note: Dmitry's dissasembler sometimes outputs address in decimal (0xdd) not sure why
+				printf("%04x - ADD.b 0x%x,R%d%c\n", pc, value, RdIdx, loOrHiReg); //Note: Dmitry's dissasembler sometimes outputs address in decimal (0xdd) not sure why
 				printRegistersState();
 			}break;
 			case 0x9:{
