@@ -1138,8 +1138,16 @@ int main(){
 			}break;
 			case 0x6:{
 				switch(aL){
-					case 0x0:{
-						printf("%04x - BSET\n", pc);
+					case 0x0:{ // BSET Rn, Rd
+
+						struct RegRef8 Rd = getRegRef8(bL);		
+						struct RegRef8 Rn = getRegRef8(bH);		
+						int bitToSet = *Rn.ptr;
+
+						*Rd.ptr = *Rd.ptr | (1 << bitToSet);
+
+						printf("%04x - BSET r%d%c, r%d%c\n", pc, Rn.idx, Rn.loOrHiReg, Rd.idx, Rd.loOrHiReg);
+						printRegistersState();
 					}break;
 					case 0x1:{
 						printf("%04x - BNOT\n", pc);
@@ -1605,8 +1613,46 @@ int main(){
 
 						}
 					}break;
-					case 0xD:
-					case 0xF:{ 
+					case 0xD:{
+						struct RegRef32 Rd = getRegRef32(bH);		
+						int bitToSet;
+						switch(c){
+							case 0x70:{ // BSET #xx:3, @ERd
+								bitToSet = dH;
+								printf("%04x - BSET #%d, @ER%d\n", pc, bitToSet, Rd.idx);
+							}break;
+							case 0x60:{ // BSET Rn, @ERd
+								struct RegRef8 Rn = getRegRef8(dH);		
+								bitToSet = *Rn.ptr;
+								printf("%04x - BSET r%d%c, @ER%d\n", pc, Rn.idx, Rn.loOrHiReg, Rd.idx);
+							}break;
+						}
+						setMemory8(*Rd.ptr, getMemory8(*Rd.ptr) | (1 << bitToSet));
+						printMemory(*Rd.ptr, 1);
+
+						printRegistersState();
+						pc+=2;
+					}break;
+					case 0xF:{
+						uint32_t address = (0x00FFFF00) | b;
+						int bitToSet;
+						switch(c){
+							case 0x70:{ // BSET #xx:3, @aa:8
+								bitToSet = dH;
+								printf("%04x - BSET #%d, @0x%x:8\n", pc, bitToSet, address);
+							}break;
+							case 0x60:{ // BSET Rn, @aa:8
+								struct RegRef8 Rn = getRegRef8(dH);		
+								bitToSet = *Rn.ptr;
+								printf("%04x - BSET r%d%c, @0x%x:8\n", pc, Rn.idx, Rn.loOrHiReg, address);
+							}break;
+						}
+						setMemory8(address, getMemory8(address) | (1 << bitToSet));
+
+						printMemory(address, 1);
+						pc+=2;
+					} break;
+						/*
 						// Here bH is the "register designation field" dont know what that is, so ignorign it for now
 						// togetherwith bL it can also be "aa" which is the "absolute address field"
 						if (cH == 0x6){
@@ -1634,7 +1680,7 @@ int main(){
 							}
 						}
 						pc+=2;
-					}break;
+					*/
 				}
 			}break;
 			case 0x8:{ // ADD.B #xx:8, Rd
