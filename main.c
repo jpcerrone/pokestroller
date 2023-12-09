@@ -328,7 +328,7 @@ int main(){
 										bool msbDisp = disp & 0x8000;
 										uint32_t signExtendedDisp = msbDisp ? (0xFFFF0000 & disp) : disp;
 
-										if (!(dH & 0b1000)){ // From memory  
+										if (!(dH & 0b1000)){ // From memory @(d:16, ERs), ERd
 											struct RegRef32 Rs = getRegRef32(dH);
 											struct RegRef32 Rd = getRegRef32(dL);
 
@@ -338,7 +338,7 @@ int main(){
 
 											printf("%04x - MOV.l @(%d:16, ER%d), ER%d\n", pc, disp, Rs.idx, Rd.idx); 
 
-										} else{ // To memory 
+										} else{ // To memory  ERs, @(d:16,ERd) 
 											struct RegRef32 Rs = getRegRef32(dL);
 											struct RegRef32 Rd = getRegRef32(dH);
 
@@ -363,6 +363,21 @@ int main(){
 										*Rd.ptr = value;
 
 										printf("%04x - MOV.l @ER%d, ER%d\n", pc, Rs.idx, Rd.idx ); 
+										printRegistersState();
+
+										pc += 2;
+									}break;
+									case 0x66:{ // AND.L Rs, ERd
+										struct RegRef32 Rs = getRegRef32(dH);
+										struct RegRef32 Rd = getRegRef32(dL);
+
+										uint32_t value = *Rs.ptr;
+										uint32_t newValue = value & *Rd.ptr;
+
+										setFlagsMOV(newValue, 32);
+										*Rd.ptr = newValue;
+
+										printf("%04x - AND.l R%d, ER%d\n", pc, Rs.idx, Rd.idx ); 
 										printRegistersState();
 
 										pc += 2;
@@ -632,8 +647,17 @@ int main(){
 					case 0x5:{
 						printf("%04x - XOR.B\n", pc);
 					}break;
-					case 0x6:{
-						printf("%04x - AND.B\n", pc);
+					case 0x6:{ // AND.B Rs, Rd
+						struct RegRef8 Rs = getRegRef8(bH);
+						struct RegRef8 Rd = getRegRef8(bL);
+
+						uint8_t newValue = *Rs.ptr & *Rd.ptr;
+
+						setFlagsMOV(newValue, 8);
+						*Rd.ptr = newValue;
+
+						printf("%04x - AND.b R%d%c,R%d%c\n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx, Rd.loOrHiReg); 
+						printRegistersState();
 					}break;
 					case 0x7:{
 						switch(bH){
@@ -933,7 +957,7 @@ int main(){
 						*SP -= 2;
 						setMemory16(*SP, pc + 2);
 
-						pc = pc + disp - 2; // Sub 2 cause we're incrementing 2 at the end of the loop
+						pc = pc + disp; // No need to increment pc by 2 since we're always doing that at the end of the loop
 
 						printMemory(*SP, 2);
 						printRegistersState();
@@ -944,7 +968,7 @@ int main(){
 						*SP -= 2;
 						setMemory16(*SP, pc + 4);
 
-						pc = pc + disp - 2; // Sub 2 cause we're incrementing 2 at the end of the loop
+						pc = pc + 2 + disp; // Increment pc by 2 since we need the next instruction (pc + 4) and we're already adding 2 at the end of the loop.
 
 						printMemory(*SP, 2);
 						printRegistersState();
@@ -1152,8 +1176,15 @@ int main(){
 					case 0x1:{
 						printf("%04x - BNOT\n", pc);
 					}break;
-					case 0x2:{
-						printf("%04x - BCLR\n", pc);
+					case 0x2:{ // BCLR Rn, Rd
+						struct RegRef8 Rd = getRegRef8(bL);		
+						struct RegRef8 Rn = getRegRef8(bH);		
+						int bitToClear = *Rn.ptr;
+
+						*Rd.ptr = *Rd.ptr & ~(1 << bitToClear);
+
+						printf("%04x - BCLR r%d%c, r%d%c\n", pc, Rn.idx, Rn.loOrHiReg, Rd.idx, Rd.loOrHiReg);
+						printRegistersState();
 					}break;
 					case 0x3:{
 						printf("%04x - BTST\n", pc);
@@ -1164,8 +1195,15 @@ int main(){
 					case 0x5:{
 						printf("%04x - XOR\n", pc);
 					}break;
-					case 0x6:{
-						printf("%04x - AND\n", pc);
+					case 0x6:{// AND.w Rs, Rd
+						struct RegRef16 Rd = getRegRef16(bL);
+						struct RegRef16 Rs = getRegRef16(bH);
+						uint16_t newValue = *Rs.ptr & *Rd.ptr;
+						setFlagsMOV(newValue, 16);
+						*Rd.ptr = newValue;
+
+						printf("%04x - AND.w %c%d,%c%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.loOrHiReg,  Rd.idx); 
+						printRegistersState();
 					}break;
 					case 0x7:{
 						uint8_t mostSignificantBit = bH >> 7;
@@ -1416,8 +1454,16 @@ int main(){
 					case 0x1:{
 						printf("%04x - BNOT\n", pc);
 					}break;
-					case 0x2:{
-						printf("%04x - BCLR\n", pc);
+					case 0x2:{ // BCLR #xx:3, Rd
+
+						struct RegRef8 Rd = getRegRef8(bL);		
+
+						int bitToClear = bH;
+
+						*Rd.ptr = *Rd.ptr & ~(1 << bitToClear);
+
+						printf("%04x - BCLR #%d, r%d%c\n", pc, bitToClear, Rd.idx, Rd.loOrHiReg);
+						printRegistersState();
 					}break;
 					case 0x3:{
 						printf("%04x - BTST\n", pc);
@@ -1446,8 +1492,15 @@ int main(){
 					case 0x7:{
 						if (mostSignificantBit == 0x1){
 							printf("%04x - BILD\n", pc);
-						}else{
-							printf("%04x - BLD\n", pc);
+						}else{ // BLD #xx:3, Rd
+							struct RegRef8 Rd = getRegRef8(bL);		
+
+							int bitToLoad = bH;
+
+							flags.C = *Rd.ptr & (1 << bitToLoad);
+
+							printf("%04x - BLD #%d, r%d%c\n", pc, bitToLoad, Rd.idx, Rd.loOrHiReg);
+							printRegistersState();
 						}					
 					}break;
 					case 0x8:{
@@ -1500,8 +1553,16 @@ int main(){
 							case 0x5:{
 								printf("%04x - XOR\n", pc);
 							}break;
-							case 0x6:{
-								printf("%04x - AND\n", pc);
+							case 0x6:{ // AND.w #xx:16, Rd
+								struct RegRef16 Rd = getRegRef16(bL);
+								uint16_t value = cd;
+								uint16_t newValue = cd & *Rd.ptr;
+								setFlagsMOV(newValue, 16);
+								*Rd.ptr = newValue;
+
+								printf("%04x - AND.w 0x%x,%c%d\n", pc, cd, Rd.loOrHiReg,  Rd.idx); 
+								printRegistersState();
+								pc+=2;
 							}break;
 						}
 					}break;
@@ -1555,17 +1616,43 @@ int main(){
 							case 0x5:{
 								printf("%04x - XOR\n", pc);
 							}break;
-							case 0x6:{
-								printf("%04x - AND\n", pc);
+							case 0x6:{ // AND.l #xx:32, ERd
+								struct RegRef32 Rd = getRegRef32(bL);
+
+								uint32_t newValue = cdef & *Rd.ptr;
+								setFlagsMOV(newValue, 32);
+
+								*Rd.ptr = newValue;
+								printf("%04x - AND.l 0x%04x, ER%d\n", pc, cdef,  Rd.idx); 
+								printRegistersState();
+								pc+=4;
 							}break;
 						}
 					}break;
 					case 0xB:{
 						printf("%04x - EEPMOV\n", pc);
 					}break;
-					case 0xC:
+					case 0xC:{
+						uint8_t mostSignificantBit = dH >> 7;
+						switch(c){
+							case 0x77:{
+								// BLD #xx:3, @ERd
+								struct RegRef32 Rd = getRegRef32(bH);		
+								int bitToLoad = dH;
+								printf("%04x - BLD #%d, @ER%d\n", pc, bitToLoad, Rd.idx);
+								flags.C = getMemory8(*Rd.ptr) & (1 << bitToLoad);
+								printRegistersState();
+								pc+=2;
+
+							}break;
+
+						}
+
+
+
+					} break;
 					case 0xE:{
-						pc+=2;
+						pc+=2; // TODO: Probably wrong
 						// Here bH is the "register designation field" dont know what that is, so ignorign it for now
 						// togetherwith bL it can also be "aa" which is the "absolute address field"
 						if (cH == 0x6){
@@ -1604,8 +1691,11 @@ int main(){
 								case 0x7:{
 									if (mostSignificantBit == 0x1){
 										printf("%04x - BILD\n", pc);
-									}else{
-										printf("%04x - BLD\n", pc);
+									}else{ // BLD #xx:3, @ERd
+										int bitToLoad = dH;
+										uint32_t address = (0x00FFFF00) | b;
+										printf("%04x - BLD #%d, @0x%x:8\n", pc, bitToLoad, address);
+										flags.C =  getMemory8(address) & (1 << bitToLoad);
 									}
 								}break;
 							}
@@ -1615,40 +1705,60 @@ int main(){
 					}break;
 					case 0xD:{
 						struct RegRef32 Rd = getRegRef32(bH);		
-						int bitToSet;
 						switch(c){
 							case 0x70:{ // BSET #xx:3, @ERd
-								bitToSet = dH;
+								int bitToSet = dH;
 								printf("%04x - BSET #%d, @ER%d\n", pc, bitToSet, Rd.idx);
+								setMemory8(*Rd.ptr, getMemory8(*Rd.ptr) | (1 << bitToSet));
 							}break;
 							case 0x60:{ // BSET Rn, @ERd
 								struct RegRef8 Rn = getRegRef8(dH);		
-								bitToSet = *Rn.ptr;
+								int bitToSet = *Rn.ptr;
 								printf("%04x - BSET r%d%c, @ER%d\n", pc, Rn.idx, Rn.loOrHiReg, Rd.idx);
+								setMemory8(*Rd.ptr, getMemory8(*Rd.ptr) | (1 << bitToSet));
+							}break;
+							case 0x72:{ // BCLR #xx:3, @ERd
+								int bitToClear = dH;
+								printf("%04x - BCLR #%d, @ER%d\n", pc, bitToClear, Rd.idx);
+								setMemory8(*Rd.ptr, getMemory8(*Rd.ptr) & ~(1 << bitToClear));
+							}break;
+							case 0x62:{ // BCLR Rn, @ERd
+								struct RegRef8 Rn = getRegRef8(dH);		
+								int bitToClear = *Rn.ptr;
+								printf("%04x - BCLR r%d%c, @ER%d\n", pc, Rn.idx, Rn.loOrHiReg, Rd.idx);
+								setMemory8(*Rd.ptr, getMemory8(*Rd.ptr) & ~(1 << bitToClear));
 							}break;
 						}
-						setMemory8(*Rd.ptr, getMemory8(*Rd.ptr) | (1 << bitToSet));
 						printMemory(*Rd.ptr, 1);
-
 						printRegistersState();
 						pc+=2;
 					}break;
 					case 0xF:{
 						uint32_t address = (0x00FFFF00) | b;
-						int bitToSet;
 						switch(c){
 							case 0x70:{ // BSET #xx:3, @aa:8
-								bitToSet = dH;
+								int bitToSet = dH;
 								printf("%04x - BSET #%d, @0x%x:8\n", pc, bitToSet, address);
+								setMemory8(address, getMemory8(address) | (1 << bitToSet));
 							}break;
 							case 0x60:{ // BSET Rn, @aa:8
 								struct RegRef8 Rn = getRegRef8(dH);		
-								bitToSet = *Rn.ptr;
+								int bitToSet = *Rn.ptr;
 								printf("%04x - BSET r%d%c, @0x%x:8\n", pc, Rn.idx, Rn.loOrHiReg, address);
+								setMemory8(address, getMemory8(address) | (1 << bitToSet));
+							}break;
+							case 0x72:{ // BCLR #xx:3, @aa:8
+								int bitToClear = dH;
+								printf("%04x - BCLR #%d, @0x%x:8\n", pc, bitToClear, address);
+								setMemory8(address, getMemory8(address) & ~(1 << bitToClear));
+							}break;
+							case 0x62:{ // BCLR Rn, @aa:8
+								struct RegRef8 Rn = getRegRef8(dH);		
+								int bitToClear = *Rn.ptr;
+								printf("%04x - BCLR r%d%c, @0x%x:8\n", pc, Rn.idx, Rn.loOrHiReg, address);
+								setMemory8(address, getMemory8(address) & ~(1 << bitToClear));
 							}break;
 						}
-						setMemory8(address, getMemory8(address) | (1 << bitToSet));
-
 						printMemory(address, 1);
 						pc+=2;
 					} break;
@@ -1722,14 +1832,22 @@ int main(){
 				printf("%04x - XOR\n", pc);
 			}break;
 
-			case 0xE:{
-				printf("%04x - AND\n", pc);
+			case 0xE:{ // AND #xx:8, Rd
+				struct RegRef8 Rd = getRegRef8(aL);
+
+				uint8_t value = b;
+				uint8_t newValue = value & *Rd.ptr;
+				setFlagsMOV(newValue, 8);
+				*Rd.ptr = newValue;
+
+				printf("%04x - AND.b 0x%x,R%d%c\n", pc, value, Rd.idx, Rd.loOrHiReg); 
+				printRegistersState();
 			}break;
 
 			case 0xF:{ // MOV.B #xx:8, Rd
 				struct RegRef8 Rd = getRegRef8(aL);
 
-				uint8_t value = (bH << 4) | bL;
+				uint8_t value = b;
 
 				setFlagsMOV(value, 8);
 				*Rd.ptr = value;
