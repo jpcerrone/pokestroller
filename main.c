@@ -13,6 +13,10 @@ enum Mode{
 
 static enum Mode mode;
 
+uint8_t clearBit8(uint8_t operand, int bit){
+	return operand & ~(1 << bit);			
+}
+
 // General purpose registers
 static uint32_t* ER[8];
 static uint16_t* R[8];
@@ -173,6 +177,19 @@ void setFlagsMOV(uint32_t value, int numberOfBits){
 	}
 }
 
+struct SSU_t{
+	uint8_t* SSCRH; // Control register H
+	uint8_t* SSCRL; // Control register L
+	uint8_t* SSMR; // Mode register
+	uint8_t* SSER; // Enable register
+	uint8_t* SSSR; // Status register
+	uint8_t* SSRDR; // Recieve data register
+	uint8_t* SSTDR; // Transmit data register.
+	uint8_t SSTRSR; // Shift register.
+};
+
+static struct SSU_t SSU;
+
 int main(){
 	int entry = 0x02C4;
 	//int entry = 0x0;
@@ -197,6 +214,21 @@ int main(){
 
 	fread(memory,1,romSize ,romFile);
 
+	// Init SSU registers
+	SSU.SSCRH = &memory[0xF0E0]; 
+	SSU.SSCRL = &memory[0xF0E1]; 
+	SSU.SSMR = &memory[0xF0E2]; 
+	SSU.SSER = &memory[0xF0E3]; 
+	SSU.SSSR = &memory[0xF0E4]; 
+	SSU.SSRDR = &memory[0xF0E9]; 
+	SSU.SSTDR = &memory[0xF0EB]; 
+	SSU.SSTRSR = 0x0; 
+
+	*SSU.SSRDR = 0x0; 
+	*SSU.SSTDR = 0x0;
+	*SSU.SSER = 0x0; 
+	*SSU.SSSR = 0x4; // TDRE = 1 (Transmit data empty) 
+	
 	// Init general purpose registers
 	for(int i=0; i < 8;i++){
 		ER[i] = malloc(4);
@@ -1860,6 +1892,49 @@ int main(){
 				printf("???\n");
 			} break;
 		}
+
+		// SSU
+		if ((*SSU.SSER & 0xC0) == 0xC0){ // TE and RE flags. Transmission and recieve enabled
+			if(*SSU.SSTDR != 0){ // When we write data to SSTDR
+				SSU.SSTRSR = *SSU.SSTDR;
+				*SSU.SSTDR = 0;
+				*SSU.SSSR = *SSU.SSSR | (1<<1); // // RDRF = 1. Receive Data Register Full
+			}
+			if(*SSU.SSRDR != 0){ // When we write data to SSTDR
+				SSU.SSTRSR = *SSU.SSRDR;
+				*SSU.SSRDR = 0;
+				*SSU.SSSR = clearBit8(*SSU.SSSR, 1); // RDRF = 0. Receive Data Register not Full   
+				// Here we'll start the transmission that'll take 8 cycles. But for now it happens instantly.
+				*SSU.SSER = clearBit8(*SSU.SSSR, 6); // RE = 0. 
+				*SSU.SSSR = clearBit8(*SSU.SSSR, 5); // RSSTP = 0. Receive single stop
+			}
+		}
+		else if (*SSU.SSER & 0x80){ // TE flag. Transmission enabled
+			if(*SSU.SSTDR != 0){ // When we write data to SSTDR
+				*SSU.SSSR = clearBit8(*SSU.SSSR, 2); // TDRE = 0. Transmit Data Empty.  
+				SSU.SSTRSR = *SSU.SSTDR;
+				*SSU.SSTDR = 0;
+				*SSU.SSSR = *SSU.SSSR | (1<<2); // TDRE = 1. Transmit Data Empty. (TODO: optimize away)
+				if (*SSU.SSER & 0b100){
+					// generate TX1. Maybe doesnt happen in the ROM
+				}
+				// Here we'll start the transmission that'll take 8 cycles. But for now it happens instantly.
+				*SSU.SSSR = *SSU.SSSR | (1<<3); // TEND = 1. Transmit Data End. 
+			}
+		}
+		else if (*SSU.SSER & 0x40){ // RE flag. Recieve enabled. TODO: Check if this mode is used in the ROM
+			if(*SSU.SSRDR != 0){ // When we write data to SSRDR
+				*SSU.SSSR = *SSU.SSSR | (1<<1); // // RDRF = 1. Receive Data Register Full
+				SSU.SSTRSR = *SSU.SSRDR; // Manual says this doesnt happen, SSTRSR isnt used in recieves.
+				*SSU.SSRDR = 0;
+
+				*SSU.SSSR = clearBit8(*SSU.SSSR, 1); // RDRF = 0. Receive Data Register not Full   
+				// Here we'll start the transmission that'll take 8 cycles. But for now it happens instantly.
+				*SSU.SSER = clearBit8(*SSU.SSSR, 6); // RE = 0. 
+				*SSU.SSSR = clearBit8(*SSU.SSSR, 5); // RSSTP = 0. Receive single stop
+			}
+		}
+
 		pc+=2;
 		if (mode == RUN){
 			continue;
