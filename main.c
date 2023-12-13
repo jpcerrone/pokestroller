@@ -118,6 +118,7 @@ uint32_t getMemory32(uint32_t address){
 
 // Note: I considered using signed parameters here, but they get sign extended and screw up the carry calculations.
 void setFlagsADD(uint32_t value1, uint32_t value2, int numberOfBits){
+	// TODO: might be greately simplified, see setFlagsINC
 	uint32_t maxValue;
 	uint32_t maxValueLo;
 	uint32_t negativeFlag;
@@ -163,33 +164,11 @@ void setFlagsADD(uint32_t value1, uint32_t value2, int numberOfBits){
 }
 
 void setFlagsINC(uint32_t value1, uint32_t value2, int numberOfBits){
-	uint32_t negativeFlag;
-	switch(numberOfBits){
-		case 8:{
-			negativeFlag = 0x80;
-
-			flags.Z = (uint8_t)(value1 + value2) == 0x0;  
-			flags.N = (uint8_t)(value1 + value2) & negativeFlag;  
-
-		}break;
-		case 16:{
-			negativeFlag = 0x8000;
-
-			flags.Z = (uint16_t)(value1 + value2) == 0x0;  
-			flags.N = (uint16_t)(value1 + value2) & negativeFlag;  
-
-		}break;
-		case 32:{
-			negativeFlag = 0x80000000;
-
-			flags.Z = (uint32_t)(value1 + value2) == 0x0;  
-			flags.N = (uint32_t)(value1 + value2) & negativeFlag;  
-		}break;
-	}
-
+	uint32_t negativeFlag = (1 << (numberOfBits-1));
+	flags.N = (value1 + value2) & negativeFlag;  
+	flags.Z = ((value1 + value2) == 0) ? true : false;
 	flags.V = ~(value1 ^ value2) & ((value1 + value2) ^ value1) & negativeFlag; // If both operands have the same sign and the results is from a different sign, overflow has occured.
 }
-
 
 void setFlagsMOV(uint32_t value, int numberOfBits){
 	flags.V = 0;
@@ -557,7 +536,7 @@ int main(){
 						switch(bH){
 							case 0x0:{ // INC.b Rd
 								struct RegRef8 Rd = getRegRef8(bL);
-								setFlagsINC(*Rd.ptr, *Rd.ptr + 1, 8);
+								setFlagsINC(*Rd.ptr, 1, 8);
 								*Rd.ptr += 1;
 								printf("%04x - INC.b r%d%c\n", pc, Rd.idx, Rd.loOrHiReg);
 								printRegistersState();
@@ -591,28 +570,28 @@ int main(){
 							}break;
 							case 0x5:{ // INC.w #1, Rd
 								struct RegRef16 Rd = getRegRef16(bL);
-								setFlagsINC(*Rd.ptr, *Rd.ptr + 1, 16); // TODO: make sure this doesnt screw up the second parameter via promotion
+								setFlagsINC(*Rd.ptr, 1, 16); // TODO: make sure this doesnt screw up the second parameter via promotion
 								*Rd.ptr += 1;
 								printf("%04x - INC.w #1, %c%d\n", pc, Rd.loOrHiReg, Rd.idx);
 								printRegistersState();
 							}break;
 							case 0x7:{ // INC.l #1, ERd
 								struct RegRef32 Rd = getRegRef32(bL);
-								setFlagsINC(*Rd.ptr, *Rd.ptr + 1, 32);
+								setFlagsINC(*Rd.ptr, 1, 32);
 								*Rd.ptr += 1;
 								printf("%04x - INC.l #1, ER%d\n", pc, Rd.idx);
 								printRegistersState();
 							} break;
 							case 0xD:{ // INC.w #2, Rd
 								struct RegRef16 Rd = getRegRef16(bL);
-								setFlagsINC(*Rd.ptr, *Rd.ptr + 2, 16);
+								setFlagsINC(*Rd.ptr, 2, 16);
 								*Rd.ptr += 2;
 								printf("%04x - INC.w #2, %c%d\n", pc, Rd.loOrHiReg, Rd.idx);
 								printRegistersState();
 							}break;
 							case 0xF:{ // INC.l #2, ERd
 								struct RegRef32 Rd = getRegRef32(bL);
-								setFlagsINC(*Rd.ptr, *Rd.ptr + 2, 32);
+								setFlagsINC(*Rd.ptr, 2, 32);
 								*Rd.ptr += 2;
 								printf("%04x - INC.l #2, ER%d\n", pc, Rd.idx);
 								printRegistersState();
@@ -797,7 +776,7 @@ int main(){
 						switch(bH){
 							case 0x0:{ // DEC.b Rd
 								struct RegRef8 Rd = getRegRef8(bL);
-								setFlagsINC(*Rd.ptr, *Rd.ptr - 1, 8);
+								setFlagsINC(*Rd.ptr, -1, 8);
 								*Rd.ptr -= 1;
 								printf("%04x - DEC.b r%d%c\n", pc, Rd.idx, Rd.loOrHiReg);
 								printRegistersState();
@@ -847,28 +826,28 @@ int main(){
 							}break;
 							case 0x5:{ // DEC.w #1, Rd
 								struct RegRef16 Rd = getRegRef16(bL);
-								setFlagsINC(*Rd.ptr, *Rd.ptr - 1, 16);
+								setFlagsINC(*Rd.ptr, -1, 16);
 								*Rd.ptr -= 1;
 								printf("%04x - DEC.w #1, %c%d\n", pc, Rd.loOrHiReg, Rd.idx);
 								printRegistersState();
 							}break;
 							case 0x7:{ // DEC.l #1, ERd
 								struct RegRef32 Rd = getRegRef32(bL);
-								setFlagsINC(*Rd.ptr, *Rd.ptr - 1, 32);
+								setFlagsINC(*Rd.ptr, -1, 32);
 								*Rd.ptr -= 1;
 								printf("%04x - DEC.l #1, ER%d\n", pc, Rd.idx);
 								printRegistersState();
 							}break;
 							case 0xD:{ // DEC.w #2, Rd
 								struct RegRef16 Rd = getRegRef16(bL);
-								setFlagsINC(*Rd.ptr, *Rd.ptr - 2, 16);
+								setFlagsINC(*Rd.ptr, -2, 16);
 								*Rd.ptr -= 2;
 								printf("%04x - DEC.w #2, %c%d\n", pc, Rd.loOrHiReg, Rd.idx);
 								printRegistersState();
 							}break;
 							case 0xF:{ // DEC.l #2, ERd
 								struct RegRef32 Rd = getRegRef32(bL);
-								setFlagsINC(*Rd.ptr, *Rd.ptr - 2, 32);
+								setFlagsINC(*Rd.ptr, -2, 32);
 								*Rd.ptr -= 2;
 								printf("%04x - DEC.l #2, ER%d\n", pc, Rd.idx);
 								printRegistersState();
