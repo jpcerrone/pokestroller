@@ -423,6 +423,36 @@ int main(){
 
 										pc += 2;
 									}break;
+									case 0x64:{ // OR.L Rs, ERd
+										struct RegRef32 Rs = getRegRef32(dH);
+										struct RegRef32 Rd = getRegRef32(dL);
+
+										uint32_t value = *Rs.ptr;
+										uint32_t newValue = value | *Rd.ptr;
+
+										setFlagsMOV(newValue, 32);
+										*Rd.ptr = newValue;
+
+										printf("%04x - OR.l R%d, ER%d\n", pc, Rs.idx, Rd.idx ); 
+										printRegistersState();
+
+										pc += 2;
+									}break;
+									case 0x65:{ // XOR.L Rs, ERd
+										struct RegRef32 Rs = getRegRef32(dH);
+										struct RegRef32 Rd = getRegRef32(dL);
+
+										uint32_t value = *Rs.ptr;
+										uint32_t newValue = value ^ *Rd.ptr;
+
+										setFlagsMOV(newValue, 32);
+										*Rd.ptr = newValue;
+
+										printf("%04x - XOR.l R%d, ER%d\n", pc, Rs.idx, Rd.idx ); 
+										printRegistersState();
+
+										pc += 2;
+									}break;
 
 								}
 
@@ -561,42 +591,49 @@ int main(){
 
 						}
 					}break;
-					case 0xB:{
+					case 0xB:{ // ADDS and INC
 						switch(bH){
-							case 0x0:
-							case 0x8:
-							case 0x9:{
-								printf("%04x - ADDS\n", pc);
+							case 0x0:{ // ADDS.l #1, ERd
+								struct RegRef32 Rd = getRegRef32(bL);
+								*Rd.ptr += 1;
+								printf("%04x - ADDS.l #1, ER%d\n", pc, Rd.idx);
+							}break;
+							case 0x8:{ // ADDS.l #2, ERd
+								struct RegRef32 Rd = getRegRef32(bL);
+								*Rd.ptr += 2;
+								printf("%04x - ADDS.l #2, ER%d\n", pc, Rd.idx);
+							}break;
+							case 0x9:{ // ADDS.l #4, ERd
+								struct RegRef32 Rd = getRegRef32(bL);
+								*Rd.ptr += 4;
+								printf("%04x - ADDS.l #4, ER%d\n", pc, Rd.idx);
 							}break;
 							case 0x5:{ // INC.w #1, Rd
 								struct RegRef16 Rd = getRegRef16(bL);
-								setFlagsINC(*Rd.ptr, 1, 16); // TODO: make sure this doesnt screw up the second parameter via promotion
+								setFlagsINC(*Rd.ptr, 1, 16); 
 								*Rd.ptr += 1;
 								printf("%04x - INC.w #1, %c%d\n", pc, Rd.loOrHiReg, Rd.idx);
-								printRegistersState();
 							}break;
 							case 0x7:{ // INC.l #1, ERd
 								struct RegRef32 Rd = getRegRef32(bL);
 								setFlagsINC(*Rd.ptr, 1, 32);
 								*Rd.ptr += 1;
 								printf("%04x - INC.l #1, ER%d\n", pc, Rd.idx);
-								printRegistersState();
 							} break;
 							case 0xD:{ // INC.w #2, Rd
 								struct RegRef16 Rd = getRegRef16(bL);
 								setFlagsINC(*Rd.ptr, 2, 16);
 								*Rd.ptr += 2;
 								printf("%04x - INC.w #2, %c%d\n", pc, Rd.loOrHiReg, Rd.idx);
-								printRegistersState();
 							}break;
 							case 0xF:{ // INC.l #2, ERd
 								struct RegRef32 Rd = getRegRef32(bL);
 								setFlagsINC(*Rd.ptr, 2, 32);
 								*Rd.ptr += 2;
 								printf("%04x - INC.l #2, ER%d\n", pc, Rd.idx);
-								printRegistersState();
 							}break;
 						}
+						printRegistersState();
 					}break;
 					case 0xC:{ // MOV.B Rs, Rd
 						struct RegRef8 Rs = getRegRef8(bH);
@@ -708,11 +745,29 @@ int main(){
 							}break;
 						}
 					}break;
-					case 0x4:{
-						printf("%04x - OR.B\n", pc);
+					case 0x4:{ // OR.B Rs, Rd
+						struct RegRef8 Rs = getRegRef8(bH);
+						struct RegRef8 Rd = getRegRef8(bL);
+
+						uint8_t newValue = *Rs.ptr | *Rd.ptr;
+
+						setFlagsMOV(newValue, 8);
+						*Rd.ptr = newValue;
+
+						printf("%04x - OR.b R%d%c,R%d%c\n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx, Rd.loOrHiReg); 
+						printRegistersState();
 					}break;
-					case 0x5:{
-						printf("%04x - XOR.B\n", pc);
+					case 0x5:{ // XOR.B Rs, Rd
+						struct RegRef8 Rs = getRegRef8(bH);
+						struct RegRef8 Rd = getRegRef8(bL);
+
+						uint8_t newValue = *Rs.ptr ^ *Rd.ptr;
+
+						setFlagsMOV(newValue, 8);
+						*Rd.ptr = newValue;
+
+						printf("%04x - XOR.b R%d%c,R%d%c\n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx, Rd.loOrHiReg); 
+						printRegistersState();
 					}break;
 					case 0x6:{ // AND.B Rs, Rd
 						struct RegRef8 Rs = getRegRef8(bH);
@@ -1282,13 +1337,27 @@ int main(){
 					case 0x3:{
 						printf("%04x - BTST\n", pc);
 					}break;
-					case 0x4:{
-						printf("%04x - OR\n", pc);
+					case 0x4:{ // OR.w Rs, Rd
+						struct RegRef16 Rd = getRegRef16(bL);
+						struct RegRef16 Rs = getRegRef16(bH);
+						uint16_t newValue = *Rs.ptr | *Rd.ptr;
+						setFlagsMOV(newValue, 16);
+						*Rd.ptr = newValue;
+
+						printf("%04x - OR.w %c%d,%c%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.loOrHiReg,  Rd.idx); 
+						printRegistersState();
 					}break;
-					case 0x5:{
-						printf("%04x - XOR\n", pc);
+					case 0x5:{ // XOR.w Rs, Rd
+						struct RegRef16 Rd = getRegRef16(bL);
+						struct RegRef16 Rs = getRegRef16(bH);
+						uint16_t newValue = *Rs.ptr ^ *Rd.ptr;
+						setFlagsMOV(newValue, 16);
+						*Rd.ptr = newValue;
+
+						printf("%04x - XOR.w %c%d,%c%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.loOrHiReg,  Rd.idx); 
+						printRegistersState();
 					}break;
-					case 0x6:{// AND.w Rs, Rd
+					case 0x6:{ // AND.w Rs, Rd
 						struct RegRef16 Rd = getRegRef16(bL);
 						struct RegRef16 Rs = getRegRef16(bH);
 						uint16_t newValue = *Rs.ptr & *Rd.ptr;
@@ -1599,128 +1668,97 @@ int main(){
 					case 0x8:{
 						printf("%04x - MOV\n", pc);
 					}break;
-					case 0x9:{ 
-						switch(bH){ // TODO: see if the next isntructions like CMP will use the same logic and abstaact it
+					case 0x9:{ // XXX.w #xx:16, Rd
+						struct RegRef16 Rd = getRegRef16(bL);
+						switch(bH){ 
 							case 0x0:{ // MOV.w #xx:16, Rd
-								struct RegRef16 Rd = getRegRef16(bL);
-
 								setFlagsMOV(cd, 16);
 								*Rd.ptr = cd;
-
 								printf("%04x - MOV.w 0x%x,%c%d\n", pc, cd, Rd.loOrHiReg,  Rd.idx); 
-								printRegistersState();
-								pc+=2;
 							}break;
 							case 0x1:{ // ADD.w #xx:16, Rd
-								struct RegRef16 Rd = getRegRef16(bL);
-
 								setFlagsADD(*Rd.ptr, cd, 16);
 								*Rd.ptr += cd;
-
 								printf("%04x - ADD.w 0x%x,%c%d\n", pc, cd, Rd.loOrHiReg,  Rd.idx); 
-								printRegistersState();
-								pc+=2;
 							}break;
 							case 0x2:{ // CMP.w #xx:16, Rd
-								struct RegRef16 Rd = getRegRef16(bL);
-
 								setFlagsADD(*Rd.ptr, -((int16_t)cd), 16);
-
 								printf("%04x - CMP.w 0x%x,%c%d\n", pc, cd, Rd.loOrHiReg,  Rd.idx); 
-								printRegistersState();
-								pc+=2;
 							}break;
 							case 0x3:{ // SUB.w #xx:16, Rd
-								struct RegRef16 Rd = getRegRef16(bL);
-
 								setFlagsADD(*Rd.ptr, -((int16_t)cd), 16);
 								*Rd.ptr -= cd;
-
 								printf("%04x - SUB.w 0x%x,%c%d\n", pc, cd, Rd.loOrHiReg,  Rd.idx); 
-								printRegistersState();
-								pc+=2;
 							}break;
-							case 0x4:{
-								printf("%04x - OR\n", pc);
+							case 0x4:{ // OR.w #xx:16, Rd
+								uint16_t value = cd;
+								uint16_t newValue = cd | *Rd.ptr;
+								setFlagsMOV(newValue, 16);
+								*Rd.ptr = newValue;
+								printf("%04x - OR.w 0x%x,%c%d\n", pc, cd, Rd.loOrHiReg,  Rd.idx); 
 							}break;
-							case 0x5:{
-								printf("%04x - XOR\n", pc);
+							case 0x5:{ // XOR.w #xx:16, Rd
+								uint16_t value = cd;
+								uint16_t newValue = cd ^ *Rd.ptr;
+								setFlagsMOV(newValue, 16);
+								*Rd.ptr = newValue;
+								printf("%04x - XOR.w 0x%x,%c%d\n", pc, cd, Rd.loOrHiReg,  Rd.idx); 
 							}break;
 							case 0x6:{ // AND.w #xx:16, Rd
-								struct RegRef16 Rd = getRegRef16(bL);
 								uint16_t value = cd;
 								uint16_t newValue = cd & *Rd.ptr;
 								setFlagsMOV(newValue, 16);
 								*Rd.ptr = newValue;
-
 								printf("%04x - AND.w 0x%x,%c%d\n", pc, cd, Rd.loOrHiReg,  Rd.idx); 
-								printRegistersState();
-								pc+=2;
 							}break;
 						}
+						printRegistersState();
+						pc+=2;
 					}break;
-
-					case 0xA:{ 
-						switch(bH){
+					case 0xA:{ // XXX.l #xx:32, ERd
+						struct RegRef32 Rd = getRegRef32(bL);
+						switch(bH){ 
 							case 0x0:{ // MOV.l #xx:32, ERd
-								struct RegRef32 Rd = getRegRef32(bL);
-
 								setFlagsMOV(cdef, 32);
-
 								*Rd.ptr = cdef;
 								printf("%04x - MOV.l 0x%04x, ER%d\n", pc, cdef,  Rd.idx); 
-								printRegistersState();
-								pc+=4;
 							}break;
 							case 0x1:{ // ADD.l #xx:32, ERd
-								struct RegRef32 Rd = getRegRef32(bL);
-
 								setFlagsADD(*Rd.ptr, cdef, 32);
-
 								*Rd.ptr += cdef;
 								printf("%04x - ADD.l 0x%04x, ER%d\n", pc, cdef,  Rd.idx); 
-								printRegistersState();
-								pc+=4;
-
 							}break;
 							case 0x2:{
 								// CMP.l #xx:32, ERd
-								struct RegRef32 Rd = getRegRef32(bL);
-
 								setFlagsADD(*Rd.ptr, -((int32_t)cdef), 32);
-
 								printf("%04x - CMP.l 0x%04x, ER%d\n", pc, cdef,  Rd.idx); 
-								printRegistersState();
-								pc+=4;
-
 							}break;
 							case 0x3:{ // SUB.l #xx:32, ERd
-								struct RegRef32 Rd = getRegRef32(bL);
 								setFlagsADD(*Rd.ptr, -((int32_t)cdef), 32);
-
 								*Rd.ptr -= cdef;
 								printf("%04x - SUB.l 0x%04x, ER%d\n", pc, cdef,  Rd.idx); 
-								printRegistersState();
-								pc+=4;
 							}break;
-							case 0x4:{
-								printf("%04x - OR\n", pc);
+							case 0x4:{ // OR.l #xx:32, ERd
+								uint32_t newValue = cdef | *Rd.ptr;
+								setFlagsMOV(newValue, 32);
+								*Rd.ptr = newValue;
+								printf("%04x - OR.l 0x%04x, ER%d\n", pc, cdef,  Rd.idx); 
 							}break;
-							case 0x5:{
-								printf("%04x - XOR\n", pc);
+							case 0x5:{ // XOR.l #xx:32, ERd
+								uint32_t newValue = cdef ^ *Rd.ptr;
+								setFlagsMOV(newValue, 32);
+								*Rd.ptr = newValue;
+								printf("%04x - XOR.l 0x%04x, ER%d\n", pc, cdef,  Rd.idx); 
 							}break;
 							case 0x6:{ // AND.l #xx:32, ERd
-								struct RegRef32 Rd = getRegRef32(bL);
-
 								uint32_t newValue = cdef & *Rd.ptr;
 								setFlagsMOV(newValue, 32);
-
 								*Rd.ptr = newValue;
 								printf("%04x - AND.l 0x%04x, ER%d\n", pc, cdef,  Rd.idx); 
-								printRegistersState();
-								pc+=4;
 							}break;
 						}
+						printRegistersState();
+						pc+=4;
 					}break;
 					case 0xB:{
 						printf("%04x - EEPMOV\n", pc);
@@ -1917,12 +1955,28 @@ int main(){
 				printf("%04x - SUBX\n", pc);
 			}break;
 
-			case 0xC:{
-				printf("%04x - OR\n", pc);
+			case 0xC:{ // OR.b #xx:8, Rd
+				struct RegRef8 Rd = getRegRef8(aL);
+
+				uint8_t value = b;
+				uint8_t newValue = value | *Rd.ptr;
+				setFlagsMOV(newValue, 8);
+				*Rd.ptr = newValue;
+
+				printf("%04x - OR.b 0x%x,R%d%c\n", pc, value, Rd.idx, Rd.loOrHiReg); 
+				printRegistersState();
 			}break;
 
-			case 0xD:{
-				printf("%04x - XOR\n", pc);
+			case 0xD:{ // XOR.b #xx:8, Rd
+				struct RegRef8 Rd = getRegRef8(aL);
+
+				uint8_t value = b;
+				uint8_t newValue = value ^ *Rd.ptr;
+				setFlagsMOV(newValue, 8);
+				*Rd.ptr = newValue;
+
+				printf("%04x - XOR.b 0x%x,R%d%c\n", pc, value, Rd.idx, Rd.loOrHiReg); 
+				printRegistersState();
 			}break;
 
 			case 0xE:{ // AND #xx:8, Rd
