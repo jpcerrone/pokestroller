@@ -1957,17 +1957,13 @@ int main(){
 		// SSU
 		if ((*SSU.SSER & 0xC0) == 0xC0){ // TE and RE flags. Transmission and recieve enabled
 			if(*SSU.SSTDR != 0){ // When we write data to SSTDR
+				*SSU.SSSR = clearBit8(*SSU.SSSR, 1); // RDRF = 0. Clear Receive Data Register Full.  
+				// Here we'll start the transmission that'll take 8 cycles. But for now it happens instantly.
 				SSU.SSTRSR = *SSU.SSTDR;
 				*SSU.SSTDR = 0;
 				*SSU.SSSR = *SSU.SSSR | (1<<1); // // RDRF = 1. Receive Data Register Full
-			}
-			if(*SSU.SSRDR != 0){ // When we write data to SSTDR
-				SSU.SSTRSR = *SSU.SSRDR;
-				*SSU.SSRDR = 0;
-				*SSU.SSSR = clearBit8(*SSU.SSSR, 1); // RDRF = 0. Receive Data Register not Full   
-				// Here we'll start the transmission that'll take 8 cycles. But for now it happens instantly.
-				*SSU.SSER = clearBit8(*SSU.SSSR, 6); // RE = 0. 
-				*SSU.SSSR = clearBit8(*SSU.SSSR, 5); // RSSTP = 0. Receive single stop
+				*SSU.SSRDR = 0x12; // Write random stuff for now
+				*SSU.SSSR = *SSU.SSSR | (1<<3); // TEND = 1. Transmit Data End. 
 			}
 		}
 		else if (*SSU.SSER & 0x80){ // TE flag. Transmission enabled
