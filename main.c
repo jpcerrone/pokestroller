@@ -402,18 +402,26 @@ int main(){
 										printRegistersState();
 										pc+=4;
 									} break;
-									case 0x69:{ // MOV.L @ERs, ERd
-										struct RegRef32 Rs = getRegRef32(dH);
-										struct RegRef32 Rd = getRegRef32(dL);
+									case 0x69:{ 
+										if (!(dH & 0x80)){ // MOV.L @ERs, ERd
+											struct RegRef32 Rs = getRegRef32(dH);
+											struct RegRef32 Rd = getRegRef32(dL);
 
-										uint32_t value = getMemory32(*Rs.ptr);
+											uint32_t value = getMemory32(*Rs.ptr);
 
-										setFlagsMOV(value, 32);
-										*Rd.ptr = value;
+											setFlagsMOV(value, 32);
+											*Rd.ptr = value;
 
-										printf("%04x - MOV.l @ER%d, ER%d\n", pc, Rs.idx, Rd.idx ); 
-										printRegistersState();
-
+											printf("%04x - MOV.l @ER%d, ER%d\n", pc, Rs.idx, Rd.idx ); 
+											printRegistersState();
+										} else{ // MOV.l ERs, @ERd 
+											struct RegRef32 Rs = getRegRef32(bL);
+											struct RegRef32 Rd = getRegRef32(bH);
+											uint32_t value = *Rs.ptr;
+											setFlagsMOV(value, 32);
+											setMemory32(*Rd.ptr, value);
+											printf("%04x - MOV.l ER%d, @ER%d, \n", pc, Rs.idx, Rd.idx);
+										}
 										pc += 2;
 									}break;
 									case 0x66:{ // AND.L Rs, ERd
@@ -1104,7 +1112,7 @@ int main(){
 					case 0x4:{ // RTS
 						printf("%04x - RTS\n", pc);
 						pc = getMemory16(*SP) - 2;
-						*SP += 1;
+						*SP += 2;
 						printRegistersState();
 					}break;
 					case 0x5:{ // BSR d:8
@@ -1383,8 +1391,8 @@ int main(){
 							printf("%04x - BST\n", pc);
 						}					
 					}break;
-					case 0x8:{ // TODO check other MOVs
-						if(b & 0x80){ // MOV.B @ERs, Rd
+					case 0x8:{ 
+						if(!(b & 0x80)){ // MOV.B @ERs, Rd
 							struct RegRef32 Rs = getRegRef32(bH);
 							struct RegRef8 Rd = getRegRef8(bL);
 
@@ -1405,21 +1413,24 @@ int main(){
 
 							printf("%04x - MOV.b R%d%c, @ER%d, \n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx);
 						}
-
-						
 						printRegistersState();
-
-
 					}break;
-					case 0x9:{ // MOV.W @ERs, Rd
-						struct RegRef32 Rs = getRegRef32(bH);
-						struct RegRef16 Rd = getRegRef16(bL);
-						uint16_t value = getMemory16(*Rs.ptr);
-
-						setFlagsMOV(value, 16);
-						*Rd.ptr = value;
-
-						printf("%04x - MOV.w @ER%d, %c%d\n", pc, Rs.idx, Rd.loOrHiReg, Rd.idx ); 
+					case 0x9:{ 
+						if(!(b & 0x80)){ // MOV.w @ERs, Rd
+							struct RegRef32 Rs = getRegRef32(bH);
+							struct RegRef16 Rd = getRegRef16(bL);
+							uint16_t value = getMemory16(*Rs.ptr);
+							setFlagsMOV(value, 16);
+							*Rd.ptr = value;
+							printf("%04x - MOV.w @ER%d, %c%d\n", pc, Rs.idx, Rd.loOrHiReg, Rd.idx ); 
+						} else{ // MOV.w Rs, @ERd 
+							struct RegRef16 Rs = getRegRef16(bL);
+							struct RegRef32 Rd = getRegRef32(bH);
+							uint16_t value = *Rs.ptr;
+							setFlagsMOV(value, 16);
+							setMemory16(*Rd.ptr, value);
+							printf("%04x - MOV.w R%d%c, @ER%d, \n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx);
+						}
 						printRegistersState();
 
 					} break;
@@ -1562,7 +1573,7 @@ int main(){
 
 
 					} break;
-					case 0xE:{ // MOV.B @(d:16, ERs), Rd
+					case 0xE:{ 
 						struct RegRef8 Rd = getRegRef8(bL);
 						struct RegRef32 Rs = getRegRef32(bH);
 
@@ -1570,17 +1581,14 @@ int main(){
 						bool msbDisp = disp & 0x8000;
 						uint32_t signExtendedDisp = msbDisp ? (0xFFFF0000 & disp) : disp;
 
-						if (!(bH & 0b1000)){ // From memory
-
-						uint8_t value = getMemory8(*Rs.ptr + signExtendedDisp);
+						if (!(bH & 0b1000)){ // From memory MOV.B @(d:16, ERs), Rd
+							uint8_t value = getMemory8(*Rs.ptr + signExtendedDisp);
 							*Rd.ptr = value;
 							setFlagsMOV(value, 8);
 
 							printf("%04x - MOV.b @(%d:16, ER%d), R%d%c\n", pc, disp, Rs.idx, Rd.idx, Rd.loOrHiReg); 
 
-						} else{ // To memory
-							// NOTE: asumming the contents of the 8 bit register are copied into the first byte pointed by ERd, though that might not be the case 
-							// since memory is accesed in 16 bits ? Will need to test
+						} else{ // To memory MOV.B Rs, @(d:16, ERd)
 							uint8_t value = *Rd.ptr;
 							setFlagsMOV(value, 8);
 							setMemory8(*Rs.ptr + signExtendedDisp, value);
@@ -1592,22 +1600,21 @@ int main(){
 
 
 					}break;
-					case 0xF:{ // MOV.W @(d:16, ERs), Rd
-						struct RegRef16 Rd = getRegRef16(bL);
+					case 0xF:{ 
+					struct RegRef16 Rd = getRegRef16(bL);
 						struct RegRef32 Rs = getRegRef32(bH);
-
 						uint16_t disp = cd;
 						bool msbDisp = disp & 0x8000;
 						uint32_t signExtendedDisp = msbDisp ? (0xFFFF0000 & disp) : disp;
 
-						if (!(bH & 0b1000)){ // From memory
+						if (!(bH & 0b1000)){ // From memory MOV.W @(d:16, ERs), Rd
 							uint16_t value = getMemory16(*Rs.ptr + signExtendedDisp);
 							*Rd.ptr = value;
 							setFlagsMOV(value, 16);
 
 							printf("%04x - MOV.w @(%d:16, ER%d), %c%d\n", pc, disp, Rs.idx, Rd.loOrHiReg, Rd.idx); 
 
-						} else{ // To memory
+						} else{ // To memory MOV.W Rs, @(d:16, ERd)
 							uint16_t value = *Rd.ptr;
 							setFlagsMOV(value, 16);
 							setMemory16(*Rs.ptr + signExtendedDisp, value);
@@ -1805,7 +1812,6 @@ int main(){
 
 					} break;
 					case 0xE:{
-						pc+=2; // TODO: Probably wrong
 						// Here bH is the "register designation field" dont know what that is, so ignorign it for now
 						// togetherwith bL it can also be "aa" which is the "absolute address field"
 						if (cH == 0x6){
@@ -1855,6 +1861,7 @@ int main(){
 
 
 						}
+						pc+=2; 
 					}break;
 					case 0xD:{
 						struct RegRef32 Rd = getRegRef32(bH);		
