@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <memory.h>
+#include <string.h>
 
 #include "main.h"
 
@@ -40,6 +41,7 @@ struct Flags{
 static struct Flags flags;
 
 static uint8_t* memory;
+static uint8_t* accel_memory;
 
 struct RegRef8 getRegRef8(uint8_t operand){
 	struct RegRef8 newRef;
@@ -196,8 +198,9 @@ struct SSU_t{
 	uint8_t* SSTDR; // Transmit data register.
 	uint8_t SSTRSR; // Shift register.
 };
-
 static struct SSU_t SSU;
+
+static uint8_t ssuBuffer[2];
 
 int main(){
 	int entry = 0x02C4;
@@ -211,6 +214,10 @@ int main(){
 	// 0xFF80 - 0xFFFF - MMIO
 	memory = malloc(64 * 1024);
 	memset(memory, 0, 64 * 1024);
+
+	accel_memory = malloc(29);
+	memset(accel_memory, 0, 29);
+	accel_memory[0] = 0x2; // Chip id
 
 	FILE* romFile = fopen("roms/rom.bin","r");
 	if(!romFile){
@@ -238,6 +245,7 @@ int main(){
 	*SSU.SSER = 0x0; 
 	*SSU.SSSR = 0x4; // TDRE = 1 (Transmit data empty) 
 	
+	memset(ssuBuffer, 0xFF, 2);
 	// Init general purpose registers
 	for(int i=0; i < 8;i++){
 		ER[i] = malloc(4);
@@ -1375,16 +1383,30 @@ int main(){
 							printf("%04x - BST\n", pc);
 						}					
 					}break;
-					case 0x8:{ // MOV.B @ERs, Rd
-						struct RegRef32 Rs = getRegRef32(bH);
-						struct RegRef8 Rd = getRegRef8(bL);
+					case 0x8:{ // TODO check other MOVs
+						if(b & 0x80){ // MOV.B @ERs, Rd
+							struct RegRef32 Rs = getRegRef32(bH);
+							struct RegRef8 Rd = getRegRef8(bL);
 
-						uint8_t value = getMemory8(*Rs.ptr);
+							uint8_t value = getMemory8(*Rs.ptr);
 
-						setFlagsMOV(value, 8);
-						*Rd.ptr = value;
+							setFlagsMOV(value, 8);
+							*Rd.ptr = value;
 
-						printf("%04x - MOV.b @ER%d, R%d%c\n", pc, Rs.idx, Rd.idx, Rd.loOrHiReg); 
+							printf("%04x - MOV.b @ER%d, R%d%c\n", pc, Rs.idx, Rd.idx, Rd.loOrHiReg); 
+						} else{// MOV.B Rs, @ERd 
+							struct RegRef8 Rs = getRegRef8(bL);
+							struct RegRef32 Rd = getRegRef32(bH);
+
+							uint8_t value = *Rs.ptr;
+
+							setFlagsMOV(value, 8);
+							setMemory8(*Rd.ptr, value);
+
+							printf("%04x - MOV.b R%d%c, @ER%d, \n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx);
+						}
+
+						
 						printRegistersState();
 
 
@@ -2013,17 +2035,35 @@ int main(){
 			if(*SSU.SSTDR != 0){ // When we write data to SSTDR
 				*SSU.SSSR = clearBit8(*SSU.SSSR, 1); // RDRF = 0. Clear Receive Data Register Full.  
 				// Here we'll start the transmission that'll take 8 cycles. But for now it happens instantly.
-				SSU.SSTRSR = *SSU.SSTDR;
+				// Accelerometer
+				if(~(getMemory8(0xFFDC)) & 0x1){ // Pin 9 low
+					if(ssuBuffer[0] == 0xFF){
+						ssuBuffer[0] = *SSU.SSTDR & 0x0F; // We'll store the address here. The "&" removes 0x80 (RW flag, not part of the address)
+						ssuBuffer[1] = 0; // And the offset here
+					} else{
+						*SSU.SSRDR = accel_memory[(ssuBuffer[0]) + ssuBuffer[1]]; 
+						ssuBuffer[1] += 1;
+					}					
+				}
 				*SSU.SSTDR = 0;
 				*SSU.SSSR = *SSU.SSSR | (1<<1); // // RDRF = 1. Receive Data Register Full
-				*SSU.SSRDR = 0x12; // Write random stuff for now
 				*SSU.SSSR = *SSU.SSSR | (1<<3); // TEND = 1. Transmit Data End. 
 			}
 		}
 		else if (*SSU.SSER & 0x80){ // TE flag. Transmission enabled
 			if(*SSU.SSTDR != 0){ // When we write data to SSTDR
 				*SSU.SSSR = clearBit8(*SSU.SSSR, 2); // TDRE = 0. Transmit Data Empty.  
-				SSU.SSTRSR = *SSU.SSTDR;
+				//SSU.SSTRSR = *SSU.SSTDR;
+				// Accelerometer
+				if(~(getMemory8(0xFFDC)) & 0x1){ // Pin 9 low
+					if(ssuBuffer[0] == 0xFF){
+						ssuBuffer[0] = *SSU.SSTDR;
+					} else if (ssuBuffer[1] == 0xFF){
+						ssuBuffer[1] = *SSU.SSTDR;
+						accel_memory[ssuBuffer[0]] = ssuBuffer[1];
+						memset(ssuBuffer, 0xFF, 2);
+					} 	
+				}
 				*SSU.SSTDR = 0;
 				*SSU.SSSR = *SSU.SSSR | (1<<2); // TDRE = 1. Transmit Data Empty. (TODO: optimize away)
 				if (*SSU.SSER & 0b100){
@@ -2033,7 +2073,8 @@ int main(){
 				*SSU.SSSR = *SSU.SSSR | (1<<3); // TEND = 1. Transmit Data End. 
 			}
 		}
-		else if (*SSU.SSER & 0x40){ // RE flag. Recieve enabled. TODO: Check if this mode is used in the ROM
+		else if (*SSU.SSER & 0x40){ // RE flag. Recieve enabled. 
+			return 1; //TODO: Check if this mode is used in the ROM
 			if(*SSU.SSRDR != 0){ // When we write data to SSRDR
 				*SSU.SSSR = *SSU.SSSR | (1<<1); // // RDRF = 1. Receive Data Register Full
 				SSU.SSTRSR = *SSU.SSRDR; // Manual says this doesnt happen, SSTRSR isnt used in recieves.
@@ -2044,6 +2085,11 @@ int main(){
 				*SSU.SSER = clearBit8(*SSU.SSSR, 6); // RE = 0. 
 				*SSU.SSSR = clearBit8(*SSU.SSSR, 5); // RSSTP = 0. Receive single stop
 			}
+		}
+		
+		if((getMemory8(0xFFDC)) & 0x1){ // Pin 9 high
+			*SSU.SSRDR = 0;
+			memset(ssuBuffer, 0xFF, 2);
 		}
 
 		pc+=2;
