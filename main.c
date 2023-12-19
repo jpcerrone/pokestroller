@@ -161,8 +161,48 @@ void setFlagsADD(uint32_t value1, uint32_t value2, int numberOfBits){
 	}
 
 	flags.V = ~(value1 ^ value2) & ((value1 + value2) ^ value1) & negativeFlag; // If both operands have the same sign and the results is from a different sign, overflow has occured.
-	flags.C = ((uint64_t)value1 + value2 > maxValue) ? 1 : 0; 
+	flags.C = (value1 & negativeFlag) && !(value2 & negativeFlag) && !((value1 + value2) & negativeFlag);
 	flags.H = (((value1 & maxValueLo) + (value2 & maxValueLo) & halfCarryFlag) == halfCarryFlag) ? 1 : 0; 
+}
+
+void setFlagsSUB(uint32_t value1, uint32_t value2, int numberOfBits){
+	// TODO: might be greately simplified, see setFlagsINC
+	uint32_t maxValueLo;
+	uint32_t negativeFlag;
+	uint32_t halfCarryFlag;
+	switch(numberOfBits){
+		case 8:{
+			maxValueLo = 0xF;
+			negativeFlag = 0x80;
+			halfCarryFlag = 0x8;
+
+			// TODO: maybe we can just cast to a signed int here and not have to use the flags
+			flags.N = (uint8_t)(value1 - value2) & negativeFlag;  
+
+		}break;
+		case 16:{
+			maxValueLo = 0xFF;
+			negativeFlag = 0x8000;
+			halfCarryFlag = 0x100;
+
+			flags.N = (uint16_t)(value1 - value2) & negativeFlag;  
+
+		}break;
+		case 32:{
+			maxValueLo = 0xFFFF;
+			negativeFlag = 0x80000000;
+			halfCarryFlag = 0x10000;
+
+			flags.N = (uint32_t)(value1 - value2) & negativeFlag;  
+
+
+		}break;
+	}
+
+	flags.Z = (value1 - value2) == 0x0;  
+	flags.V = ((value1 ^ value2) & negativeFlag) && (~((value1 - value2) ^ value2) & negativeFlag); // If both operands have a different sign and the results is from the same sing as the 2nd op, overflow has occured.
+	flags.C = value2 > value1;
+	flags.H = (value2 & maxValueLo) > (value1 & maxValueLo); 
 }
 
 void setFlagsINC(uint32_t value1, uint32_t value2, int numberOfBits){
@@ -421,6 +461,7 @@ int main(){
 											setFlagsMOV(value, 32);
 											setMemory32(*Rd.ptr, value);
 											printf("%04x - MOV.l ER%d, @ER%d, \n", pc, Rs.idx, Rd.idx);
+											printMemory(*Rd.ptr, 4);
 										}
 										pc += 2;
 									}break;
@@ -824,7 +865,7 @@ int main(){
 						struct RegRef8 Rs = getRegRef8(bH);
 						struct RegRef8 Rd = getRegRef8(bL);
 
-						setFlagsADD(*Rd.ptr, -((int8_t)*Rs.ptr), 8);
+						setFlagsSUB(*Rd.ptr, *Rs.ptr, 8);
 						*Rd.ptr -= *Rs.ptr;
 
 						printf("%04x - SUB.b R%d%c,R%d%c\n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx, Rd.loOrHiReg); 
@@ -836,7 +877,7 @@ int main(){
 						struct RegRef16 Rs = getRegRef16(bH);
 						struct RegRef16 Rd = getRegRef16(bL);
 
-						setFlagsADD(*Rd.ptr, -((int16_t)*Rs.ptr), 16);
+						setFlagsSUB(*Rd.ptr, *Rs.ptr, 16);
 
 						*Rd.ptr -= *Rs.ptr;
 						printf("%04x - SUB.w %c%d,%c%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.loOrHiReg,  Rd.idx); 
@@ -863,7 +904,7 @@ int main(){
 								struct RegRef32 Rs = getRegRef32(bH);
 								struct RegRef32 Rd = getRegRef32(bL);
 								
-								setFlagsADD(*Rd.ptr, -((int32_t)*Rs.ptr), 32);
+								setFlagsSUB(*Rd.ptr, *Rs.ptr, 32);
 
 								*Rd.ptr -= *Rs.ptr;
 								printf("%04x - SUB.l ER%d, ER%d\n", pc, Rs.idx,  Rd.idx); 
@@ -929,7 +970,7 @@ int main(){
 						struct RegRef8 Rs = getRegRef8(bH);
 						struct RegRef8 Rd = getRegRef8(bL);
 
-						setFlagsADD(*Rd.ptr, -((int8_t)*Rs.ptr), 8);
+						setFlagsSUB(*Rd.ptr, *Rs.ptr, 8);
 
 						printf("%04x - SUB.b R%d%c,R%d%c\n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx, Rd.loOrHiReg); 
 						printRegistersState();
@@ -938,7 +979,7 @@ int main(){
 					case 0xD:{ // CMP.W Rs, Rd
 						struct RegRef16 Rs = getRegRef16(bH);
 						struct RegRef16 Rd = getRegRef16(bL);
-						setFlagsADD(*Rd.ptr, -((int16_t)*Rs.ptr), 16);
+						setFlagsSUB(*Rd.ptr, *Rs.ptr, 16);
 
 						printf("%04x - CMP.w %c%d,%c%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.loOrHiReg,  Rd.idx); 
 						printRegistersState();
@@ -962,7 +1003,7 @@ int main(){
 								struct RegRef32 Rs = getRegRef32(bH);
 								struct RegRef32 Rd = getRegRef32(bL);
 
-								setFlagsADD(*Rd.ptr, -((int32_t)*Rs.ptr), 32);
+								setFlagsSUB(*Rd.ptr, *Rs.ptr, 32);
 
 								printf("%04x - CMP.l ER%d, ER%d\n", pc, Rs.idx,  Rd.idx); 
 								printRegistersState();
@@ -1410,8 +1451,8 @@ int main(){
 
 							setFlagsMOV(value, 8);
 							setMemory8(*Rd.ptr, value);
-
 							printf("%04x - MOV.b R%d%c, @ER%d, \n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx);
+							printMemory(*Rd.ptr, 1);
 						}
 						printRegistersState();
 					}break;
@@ -1430,6 +1471,7 @@ int main(){
 							setFlagsMOV(value, 16);
 							setMemory16(*Rd.ptr, value);
 							printf("%04x - MOV.w R%d%c, @ER%d, \n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx);
+							printMemory(*Rd.ptr, 2);
 						}
 						printRegistersState();
 
@@ -1711,11 +1753,11 @@ int main(){
 								printf("%04x - ADD.w 0x%x,%c%d\n", pc, cd, Rd.loOrHiReg,  Rd.idx); 
 							}break;
 							case 0x2:{ // CMP.w #xx:16, Rd
-								setFlagsADD(*Rd.ptr, -((int16_t)cd), 16);
+								setFlagsSUB(*Rd.ptr, cd, 16);
 								printf("%04x - CMP.w 0x%x,%c%d\n", pc, cd, Rd.loOrHiReg,  Rd.idx); 
 							}break;
 							case 0x3:{ // SUB.w #xx:16, Rd
-								setFlagsADD(*Rd.ptr, -((int16_t)cd), 16);
+								setFlagsSUB(*Rd.ptr, cd, 16);
 								*Rd.ptr -= cd;
 								printf("%04x - SUB.w 0x%x,%c%d\n", pc, cd, Rd.loOrHiReg,  Rd.idx); 
 							}break;
@@ -1759,11 +1801,11 @@ int main(){
 							}break;
 							case 0x2:{
 								// CMP.l #xx:32, ERd
-								setFlagsADD(*Rd.ptr, -((int32_t)cdef), 32);
+								setFlagsSUB(*Rd.ptr, cdef, 32);
 								printf("%04x - CMP.l 0x%04x, ER%d\n", pc, cdef,  Rd.idx); 
 							}break;
 							case 0x3:{ // SUB.l #xx:32, ERd
-								setFlagsADD(*Rd.ptr, -((int32_t)cdef), 32);
+								setFlagsSUB(*Rd.ptr, cdef, 32);
 								*Rd.ptr -= cdef;
 								printf("%04x - SUB.l 0x%04x, ER%d\n", pc, cdef,  Rd.idx); 
 							}break;
@@ -1973,7 +2015,7 @@ int main(){
 
 				uint8_t value = (bH << 4) | bL;
 
-				setFlagsADD(*Rd.ptr, -((int8_t)value), 8);
+				setFlagsSUB(*Rd.ptr, value, 8);
 
 				printf("%04x - CMP.b 0x%x,R%d%c\n", pc, value, Rd.idx, Rd.loOrHiReg); 
 				printRegistersState();
