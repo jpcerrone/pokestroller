@@ -18,6 +18,9 @@ uint8_t clearBit8(uint8_t operand, int bit){
 	return operand & ~(1 << bit);			
 }
 
+static int PIN1 = 0xFFD4;
+static int PIN9 = 0xFFDC;
+
 // General purpose registers
 static uint32_t* ER[8];
 static uint16_t* R[8];
@@ -41,7 +44,8 @@ struct Flags{
 static struct Flags flags;
 
 static uint8_t* memory;
-static uint8_t* accel_memory;
+static uint8_t* eepromMemory;
+static uint8_t* accelMemory;
 
 struct RegRef8 getRegRef8(uint8_t operand){
 	struct RegRef8 newRef;
@@ -255,9 +259,12 @@ int main(){
 	memory = malloc(64 * 1024);
 	memset(memory, 0, 64 * 1024);
 
-	accel_memory = malloc(29);
-	memset(accel_memory, 0, 29);
-	accel_memory[0] = 0x2; // Chip id
+	eepromMemory = malloc(64 * 1024);
+	memset(eepromMemory, 0, 64 * 1024);
+
+	accelMemory = malloc(29);
+	memset(accelMemory, 0, 29);
+	accelMemory[0] = 0x2; // Chip id
 
 	FILE* romFile = fopen("roms/shar.bin","r");
 	if(!romFile){
@@ -301,6 +308,13 @@ int main(){
 
 	int pc = entry;
 	while(pc != romSize){
+		// Skip certain instructions
+		if (pc == 0x336){ // Factory Tests
+			pc += 4;
+			printf("SKIP 0336 jsr factoryTestPerformIfNeeded:24\n");
+			continue;
+		}
+
 		uint16_t* currentInstruction = (uint16_t*)(memory + pc);
 		// IMPROVEMENT: maybe just use pointers to the ROM, left this way cause it seems cleaner
 		uint16_t ab = (*currentInstruction << 8) | (*currentInstruction >> 8); // 0xbHbL aHaL -> aHaL bHbL
@@ -935,18 +949,48 @@ int main(){
 							case 0x3:{
 								printf("%04x - NOT\n", pc);
 							}break;
-							case 0x5:
-							case 0x7:{
-								printf("%04x - EXTU\n", pc);
+							case 0x5:{ // EXTU.w Rd
+								struct RegRef16 Rd = getRegRef16(bL);
+								*Rd.ptr = *Rd.ptr & 0x00FF;
+								setFlagsMOV(*Rd.ptr, 16);
+								printf("%04x - EXTU.w %c%d\n", pc, Rd.loOrHiReg, Rd.idx);
+								printRegistersState();
+							} break;
+							case 0x7:{ // EXTU.l Rd
+								struct RegRef32 Rd = getRegRef32(bL);
+								*Rd.ptr = *Rd.ptr & 0x0000FFFF;
+								setFlagsMOV(*Rd.ptr, 32);
+								printf("%04x - EXTU.l er%d\n", pc, Rd.idx);
+								printRegistersState();
 							}break;
 							case 0x8:
 							case 0x9:
 							case 0xB:{
 								printf("%04x - NEG\n", pc);
 							}break;
-							case 0xD:
-							case 0xF:{
-								printf("%04x - EXTS\n", pc);
+							case 0xD:{ // EXTS.w Rd
+								struct RegRef16 Rd = getRegRef16(bL);
+								bool sign = *Rd.ptr & 0x80;
+								if (sign == 0){
+									*Rd.ptr = *Rd.ptr & 0x00FF;
+								} else{
+									*Rd.ptr = (*Rd.ptr & 0x00FF) | 0xFF00;
+								}
+								setFlagsMOV(*Rd.ptr, 16);
+								printf("%04x - EXTS.w %c%d\n", pc, Rd.loOrHiReg, Rd.idx);
+								printRegistersState();
+							} break;
+							case 0xF:{ // EXTS.l Rd
+								struct RegRef32 Rd = getRegRef32(bL);
+								bool sign = *Rd.ptr & 0x8000;
+								if (sign == 0){
+									*Rd.ptr = *Rd.ptr & 0x0000FFFF;
+								} else{
+									*Rd.ptr = (*Rd.ptr & 0x0000FFFF) | 0xFFFF0000;
+								}
+								setFlagsMOV(*Rd.ptr, 32);
+								printf("%04x - EXTS.l er%d\n", pc, Rd.idx);
+								printRegistersState();
 							}break;
 
 						}
@@ -2175,12 +2219,12 @@ int main(){
 				*SSU.SSSR = clearBit8(*SSU.SSSR, 1); // RDRF = 0. Clear Receive Data Register Full.  
 				// Here we'll start the transmission that'll take 8 cycles. But for now it happens instantly.
 				// Accelerometer
-				if(~(getMemory8(0xFFDC)) & 0x1){ // Pin 9 low
+				if(~(getMemory8(PIN9)) & 0x1){ // Pin 9 low
 					if(ssuBuffer[0] == 0xFF){
 						ssuBuffer[0] = *SSU.SSTDR & 0x0F; // We'll store the address here. The "&" removes 0x80 (RW flag, not part of the address)
 						ssuBuffer[1] = 0; // And the offset here
 					} else{
-						*SSU.SSRDR = accel_memory[(ssuBuffer[0]) + ssuBuffer[1]]; 
+						*SSU.SSRDR = accelMemory[(ssuBuffer[0]) + ssuBuffer[1]]; 
 						ssuBuffer[1] += 1;
 					}					
 				}
@@ -2194,12 +2238,12 @@ int main(){
 				*SSU.SSSR = clearBit8(*SSU.SSSR, 2); // TDRE = 0. Transmit Data Empty.  
 				//SSU.SSTRSR = *SSU.SSTDR;
 				// Accelerometer
-				if(~(getMemory8(0xFFDC)) & 0x1){ // Pin 9 low
+				if(~(getMemory8(PIN9)) & 0x1){ // Pin 9 low
 					if(ssuBuffer[0] == 0xFF){
 						ssuBuffer[0] = *SSU.SSTDR;
 					} else if (ssuBuffer[1] == 0xFF){
 						ssuBuffer[1] = *SSU.SSTDR;
-						accel_memory[ssuBuffer[0]] = ssuBuffer[1];
+						accelMemory[ssuBuffer[0]] = ssuBuffer[1];
 						memset(ssuBuffer, 0xFF, 2);
 					} 	
 				}
