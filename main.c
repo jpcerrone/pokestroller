@@ -753,25 +753,21 @@ int main(){
 								flags.C = *Rd.ptr & 0x80;
 								*Rd.ptr = (*Rd.ptr << 1);
 								setFlagsMOV(*Rd.ptr, 8);
-								printf("%04x - SHLL.b\n", pc);
-								printRegistersState();
+								printf("%04x - SHLL.b r%d%c\n", pc, Rd.idx, Rd.loOrHiReg);
 							}break;
 							case 0x1:{ // SHLL.w Rd
 								struct RegRef16 Rd = getRegRef16(bL);
 								flags.C = *Rd.ptr & 0x8000;
 								*Rd.ptr = (*Rd.ptr << 1);
 								setFlagsMOV(*Rd.ptr, 16);
-								printf("%04x - SHLL.w\n", pc);
-								printRegistersState();
-
+								printf("%04x - SHLL.w %c%d\n", pc, Rd.loOrHiReg, Rd.idx);
 							} break;
 							case 0x3:{ // SHLL.l Rd
 								struct RegRef32 Rd = getRegRef32(bL);
 								flags.C = *Rd.ptr & 0x80000000;
 								*Rd.ptr = (*Rd.ptr << 1);
 								setFlagsMOV(*Rd.ptr, 32);
-								printf("%04x - SHLL.l\n", pc);
-								printRegistersState();
+								printf("%04x - SHLL.l er%d\n", pc, Rd.idx);
 							}break;
 							case 0x8:{ // SHAL.b Rd -- These differ in their treatment of the V flag
 								struct RegRef8 Rd = getRegRef8(bL);
@@ -779,8 +775,7 @@ int main(){
 								*Rd.ptr = (*Rd.ptr << 1);
 								setFlagsMOV(*Rd.ptr, 8);
 								flags.V = flags.C && !(*Rd.ptr & 0x80);
-								printf("%04x - SHAL.b\n", pc);
-								printRegistersState();
+								printf("%04x - SHAL.b r%d%c\n", pc, Rd.idx, Rd.loOrHiReg);
 							}break;
 							case 0x9:{ // SHAL.w Rd
 								struct RegRef16 Rd = getRegRef16(bL);
@@ -788,8 +783,7 @@ int main(){
 								*Rd.ptr = (*Rd.ptr << 1);
 								setFlagsMOV(*Rd.ptr, 16);
 								flags.V = flags.C && !(*Rd.ptr & 0x8000);
-								printf("%04x - SHAL.w\n", pc);
-								printRegistersState();
+								printf("%04x - SHAL.w %c%d\n", pc, Rd.loOrHiReg, Rd.idx);
 							}break;
 							case 0xB:{ // SHAL.l Rd
 								struct RegRef32 Rd = getRegRef32(bL);
@@ -797,10 +791,10 @@ int main(){
 								*Rd.ptr = (*Rd.ptr << 1);
 								setFlagsMOV(*Rd.ptr, 32);
 								flags.V = flags.C && !(*Rd.ptr & 0x80000000);
-								printf("%04x - SHAL.l\n", pc);
-								printRegistersState();
+								printf("%04x - SHAL.l er%d\n", pc, Rd.idx);
 							}break;
 						}
+						printRegistersState();
 					}break;
 					case 0x1:{
 						switch(bH){
@@ -809,73 +803,94 @@ int main(){
 								flags.C = *Rd.ptr & 0x1;
 								*Rd.ptr = (*Rd.ptr >> 1);
 								setFlagsMOV(*Rd.ptr, 8);
-								printf("%04x - SHLR.b\n", pc);
-								printRegistersState();
+								printf("%04x - SHLR.b r%d%c\n", pc, Rd.idx, Rd.loOrHiReg);
 							}break;
 							case 0x1:{ // SHLR.w Rd
 								struct RegRef16 Rd = getRegRef16(bL);
 								flags.C = *Rd.ptr & 0x1;
-								*Rd.ptr = (*Rd.ptr >> 1) | (*Rd.ptr & 0x8000);
+								*Rd.ptr = (*Rd.ptr >> 1);
 								setFlagsMOV(*Rd.ptr, 16);
-								printf("%04x - SHLR.w\n", pc);
-								printRegistersState();
+								printf("%04x - SHLR.w %c%d\n", pc, Rd.loOrHiReg, Rd.idx);
 							} break;
 							case 0x3:{ // SHLR.l Rd
 								struct RegRef32 Rd = getRegRef32(bL);
 								flags.C = *Rd.ptr & 0x1;
-								*Rd.ptr = (*Rd.ptr >> 1) | (*Rd.ptr & 0x80000000);
+								*Rd.ptr = (*Rd.ptr >> 1);
 								setFlagsMOV(*Rd.ptr, 32);
-								printf("%04x - SHLR.l\n", pc);
-								printRegistersState();
+								printf("%04x - SHLR.l er%d\n", pc, Rd.idx);
+							}break;
+							case 0x8:{ // SHAR.b Rd - Unused in the ROM
+								return 1;
 							}break;
 							case 0x9:{ // SHAR.w Rd
 								struct RegRef16 Rd = getRegRef16(bL);
 								flags.C = *Rd.ptr & 0x1;
-								*Rd.ptr = (*Rd.ptr >> 1);
+								*Rd.ptr = (*Rd.ptr >> 1) | (*Rd.ptr & 0x8000);
 								setFlagsMOV(*Rd.ptr, 16);
-								printf("%04x - SHAR.w\n", pc);
-								printRegistersState();
+								printf("%04x - SHAR.w %c%d\n", pc, Rd.loOrHiReg, Rd.idx);
 							}break;
-							case 0x8:{ // Unused in the ROM
-								return 1;
-							} break;
 							case 0xB:{ // SHAR.l Rd
 								struct RegRef32 Rd = getRegRef32(bL);
 								flags.C = *Rd.ptr & 0x1;
 								*Rd.ptr = (*Rd.ptr >> 1) | (*Rd.ptr & 0x80000000);
 								setFlagsMOV(*Rd.ptr, 32);
-								printf("%04x - SHAR.l\n", pc);
-								printRegistersState();
+								printf("%04x - SHAR.l er%d\n", pc, Rd.idx);
 							}break;
 						}
+						printRegistersState();
 					}break;
 					case 0x2:{
 						switch(bH){
-							case 0x0:
-							case 0x1:
-							case 0x3:{
-								printf("%04x - ROTXL\n", pc);
+							case 0x0:{ // ROTXL.b Rd
+								struct RegRef8 Rd = getRegRef8(bL);
+								bool oldCarry = flags.C;
+								flags.C = *Rd.ptr & 0x80;
+								*Rd.ptr = (*Rd.ptr << 1) | oldCarry;
+								setFlagsMOV(*Rd.ptr, 8);
+								printf("%04x - ROTXL.b r%d%c\n", pc, Rd.idx, Rd.loOrHiReg);
+							} break;
+							case 0x1:{ // ROTXL.w Rd
+								struct RegRef16 Rd = getRegRef16(bL);
+								bool oldCarry = flags.C;
+								flags.C = *Rd.ptr & 0x8000;
+								*Rd.ptr = (*Rd.ptr << 1) | oldCarry;
+								setFlagsMOV(*Rd.ptr, 16);
+								printf("%04x - ROTXL.w %c%d\n", pc, Rd.loOrHiReg, Rd.idx);
+							} break;
+							case 0x3:{ // ROTXL.l Rd
+								struct RegRef32 Rd = getRegRef32(bL);
+								bool oldCarry = flags.C;
+								flags.C = *Rd.ptr & 0x80000000;
+								*Rd.ptr = (*Rd.ptr << 1) | oldCarry;
+								setFlagsMOV(*Rd.ptr, 32);
+								printf("%04x - ROTXL.l er%d\n", pc, Rd.idx);
 							}break;
-							case 0x8:
-							case 0x9:
-							case 0xB:{
-								printf("%04x - ROTL\n", pc);
+							case 0x8:{ // ROTL.b Rd
+								struct RegRef8 Rd = getRegRef8(bL);
+								flags.C = *Rd.ptr & 0x80;
+								*Rd.ptr = (*Rd.ptr << 1) | flags.C;
+								setFlagsMOV(*Rd.ptr, 8);
+								printf("%04x - ROTL.b r%d%c\n", pc, Rd.idx, Rd.loOrHiReg);
+							} break;
+							case 0x9:{ // ROTL.w Rd
+								struct RegRef16 Rd = getRegRef16(bL);
+								flags.C = *Rd.ptr & 0x8000;
+								*Rd.ptr = (*Rd.ptr << 1) | flags.C;
+								setFlagsMOV(*Rd.ptr, 16);
+								printf("%04x - ROTL.w %c%d\n", pc, Rd.loOrHiReg, Rd.idx);
+							} break;
+							case 0xB:{ // ROTL.l Rd
+								struct RegRef32 Rd = getRegRef32(bL);
+								flags.C = *Rd.ptr & 0x80000000;
+								*Rd.ptr = (*Rd.ptr << 1) | flags.C;
+								setFlagsMOV(*Rd.ptr, 32);
+								printf("%04x - ROTL.l er%d\n", pc, Rd.idx);
 							}break;
 						}
+						printRegistersState();
 					}break;
-					case 0x3:{
-						switch(bH){
-							case 0x0:
-							case 0x1:
-							case 0x3:{
-								printf("%04x - ROTXR\n", pc);
-							}break;
-							case 0x8:
-							case 0x9:
-							case 0xB:{
-								printf("%04x - ROTR\n", pc);
-							}break;
-						}
+					case 0x3:{ // ROTR and ROTXR - Unused in the ROM
+						return 1;
 					}break;
 					case 0x4:{ // OR.B Rs, Rd
 						struct RegRef8 Rs = getRegRef8(bH);
