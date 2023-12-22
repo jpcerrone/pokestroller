@@ -47,6 +47,8 @@ static uint8_t* memory;
 static uint8_t* eepromMemory;
 static uint8_t* accelMemory;
 
+uint8_t eepromStatusRegister;
+
 struct RegRef8 getRegRef8(uint8_t operand){
 	struct RegRef8 newRef;
 	newRef.idx = operand & 0b0111;
@@ -247,9 +249,9 @@ static struct SSU_t SSU;
 static uint8_t ssuBuffer[2];
 
 int main(){
-	//int entry = 0x02C4;
-	int entry = 0x0;
-	mode = RUN;
+	int entry = 0x02C4;
+	//int entry = 0x0;
+	mode = STEP;
 	int instructionsToStep = 0;
 
 	// 0x0000 - 0xBFFF - ROM 
@@ -260,13 +262,15 @@ int main(){
 	memset(memory, 0, 64 * 1024);
 
 	eepromMemory = malloc(64 * 1024);
-	memset(eepromMemory, 0, 64 * 1024);
+	memset(eepromMemory, 0xFF, 64 * 1024);
 
 	accelMemory = malloc(29);
 	memset(accelMemory, 0, 29);
 	accelMemory[0] = 0x2; // Chip id
 
-	FILE* romFile = fopen("roms/shar.bin","r");
+	eepromStatusRegister = 0x0;
+
+	FILE* romFile = fopen("roms/rom.bin","r");
 	if(!romFile){
 		printf("Can't find rom");
 	}
@@ -2219,7 +2223,7 @@ int main(){
 				*SSU.SSSR = clearBit8(*SSU.SSSR, 1); // RDRF = 0. Clear Receive Data Register Full.  
 				// Here we'll start the transmission that'll take 8 cycles. But for now it happens instantly.
 				// Accelerometer
-				if(~(getMemory8(PIN9)) & 0x1){ // Pin 9 low
+				if(~(getMemory8(PIN9)) & 0x1){ 
 					if(ssuBuffer[0] == 0xFF){
 						ssuBuffer[0] = *SSU.SSTDR & 0x0F; // We'll store the address here. The "&" removes 0x80 (RW flag, not part of the address)
 						ssuBuffer[1] = 0; // And the offset here
@@ -2227,6 +2231,24 @@ int main(){
 						*SSU.SSRDR = accelMemory[(ssuBuffer[0]) + ssuBuffer[1]]; 
 						ssuBuffer[1] += 1;
 					}					
+				}
+				// EEPROM
+				if(~(getMemory8(PIN1)) & 0x2){ 
+					if(ssuBuffer[0] == 0xFF){
+						if (*SSU.SSTDR == 0x5){ // RDSR - read status register
+							*SSU.SSRDR = eepromStatusRegister; 
+						}if (*SSU.SSTDR == 0x3){ // READ - read from memory
+							ssuBuffer[0] = 0x3; 
+						}
+					} else{ // TODO might change on reads
+						if (ssuBuffer[1] == 0xFF){
+							ssuBuffer[1] = *SSU.SSTDR; // hi address
+						}else{
+							*SSU.SSRDR = eepromMemory[(ssuBuffer[1] << 8) | *SSU.SSTDR];
+							ssuBuffer[0] = 0xFF;
+							ssuBuffer[1] = 0xFF;
+						}
+					}
 				}
 				*SSU.SSTDR = 0;
 				*SSU.SSSR = *SSU.SSSR | (1<<1); // // RDRF = 1. Receive Data Register Full
@@ -2238,7 +2260,7 @@ int main(){
 				*SSU.SSSR = clearBit8(*SSU.SSSR, 2); // TDRE = 0. Transmit Data Empty.  
 				//SSU.SSTRSR = *SSU.SSTDR;
 				// Accelerometer
-				if(~(getMemory8(PIN9)) & 0x1){ // Pin 9 low
+				if(~(getMemory8(PIN9)) & 0x1){ 
 					if(ssuBuffer[0] == 0xFF){
 						ssuBuffer[0] = *SSU.SSTDR;
 					} else if (ssuBuffer[1] == 0xFF){
