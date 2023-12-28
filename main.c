@@ -1625,6 +1625,10 @@ int main(){
 								setFlagsMOV(value, 8);
 								*Rd.ptr = value;
 
+								if(address == 0xfff0e9){ // SSSRDR
+									*SSU.SSSR = clearBit8(*SSU.SSSR, 1);
+								}
+
 								printf("%04x - MOV.b @%x:16, R%d%c\n", pc, address, Rd.idx, Rd.loOrHiReg); 
 								printRegistersState();
 
@@ -1638,6 +1642,13 @@ int main(){
 								uint8_t value = *Rs.ptr;
 								setFlagsMOV(value, 8);
 								setMemory8(address, value);
+
+								if((address == 0xfff0e3) && (~value & 0x80)){ // When clearing SSER.TE
+									*SSU.SSSR = *SSU.SSSR | 0x4; // TDRE = 1
+								}
+								if(address == 0xfff0eb){ // SSSTDR
+									*SSU.SSSR = clearBit8(*SSU.SSSR, 3);
+								}
 
 								printf("%04x - MOV.b R%d%c,@%x:16 \n", pc, Rs.idx, Rs.loOrHiReg, address); 
 								printMemory(address, 1);
@@ -1664,7 +1675,7 @@ int main(){
 
 							}break;
 
-							case 0x8:{ // MOV.B Rs, @aa:16 
+							case 0x8:{ // MOV.w Rs, @aa:16 
 								uint32_t address = (cd & 0x0000FFFF) | 0x00FF0000; // Upper 16 bits assumed to be 1
 
 								struct RegRef16 Rs = getRegRef16(bL);
@@ -2218,6 +2229,11 @@ int main(){
 		}
 
 		// SSU
+		if (~*SSU.SSER & 0x80){
+			*SSU.SSSR |= 0x4;
+		}
+
+
 		if ((*SSU.SSER & 0xC0) == 0xC0){ // TE and RE flags. Transmission and recieve enabled
 			if(*SSU.SSTDR != 0){ // When we write data to SSTDR
 				*SSU.SSSR = clearBit8(*SSU.SSSR, 1); // RDRF = 0. Clear Receive Data Register Full.  
