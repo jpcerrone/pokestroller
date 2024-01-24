@@ -45,20 +45,7 @@ static struct Flags flags;
 
 static uint8_t* memory;
 
-enum ACCEL_STATES{
-	ACCEL_EMPTY,
-	ACCEL_READING,
-};
 
-struct Accelerometer_t{
-	uint8_t* memory;
-	uint8_t status;
-	struct accelBuffer_t{
-		uint8_t address;
-		uint8_t offset;
-		enum ACCEL_STATES state;
-	} buffer;
-};
 static struct Accelerometer_t accel;
 static struct Eeprom_t eeprom;
 
@@ -259,6 +246,12 @@ struct SSU_t{
 };
 static struct SSU_t SSU;
 
+static const uint8_t RDRF = (1 << 1); // Recieve Data Register Full
+static const uint8_t TDRE = (1 << 2); // Transmit Data Register Empty
+static const uint8_t TEND = (1 << 3); // Transmit End
+static const uint8_t TE = 0x80; // Transmission Enabled
+static const uint8_t RE = 0x40; // Reception Enabled
+
 int main(){
 	int entry = 0x02C4;
 	//int entry = 0x0;
@@ -307,8 +300,6 @@ int main(){
 	*SSU.SSER = 0x0; 
 	*SSU.SSSR = 0x4; // TDRE = 1 (Transmit data empty) 
 	
-	ssuBufferLastFilled = -1;
-	memset(ssuBuffer, 0xFF, 2);
 	// Init general purpose registers
 	for(int i=0; i < 8;i++){
 		ER[i] = malloc(4);
@@ -2240,24 +2231,22 @@ int main(){
 		}
 
 		// SSU
-		if (~*SSU.SSER & 0x80){ // TE == 0
-			*SSU.SSSR |= 0x4; // Set TDRE
+		if (~*SSU.SSER & TE){ // TE == 0
+			*SSU.SSSR |= TDRE; // Set TDRE
 		}
 
-		if ((*SSU.SSER & 0xC0) == 0xC0){ // TE and RE flags. Transmission and recieve enabled
-			if(~*SSU.SSSR & 0x4){ // TDRE is 0 (not empty)
-				*SSU.SSSR = clearBit8(*SSU.SSSR, 1); // RDRF = 0. Clear Receive Data Register Full.  
+		if ((*SSU.SSER & (TE & RE)) == (TE & RE)){ // Transmission and recieve enabled
+			if(~*SSU.SSSR & TDRE){ 
 				// Here we'll start the transmission that'll take 8 cycles. But for now it happens instantly.
 				// Accelerometer
-				if(~(getMemory8(PIN9)) & 0x1){ 
+				if(~(getMemory8(PIN9)) & 0x1){ // TODO: find more readable way to deal with pins
 					switch(accel.buffer.state){
-						case ACCEL_EMPTY:{
+						case ACCEL_GETTING_ADDRESS:{
 							accel.buffer.address = *SSU.SSTDR & 0x0F; // The "&" removes 0x80 (RW flag, not part of the address)
 							accel.buffer.offset = 0;
-							accel.buffer.state = ACCEL_READING;
+							accel.buffer.state = ACCEL_GETTING_BYTES;
 						}break;
-						case ACCEL_READING:{
-							accel.memory[accel.buffer.address] = *SSU.SSTDR;
+						case ACCEL_GETTING_BYTES:{
 							*SSU.SSRDR = accel.memory[(accel.buffer.address) + accel.buffer.offset]; 
 							accel.buffer.offset += 1;
 						}break;
@@ -2272,50 +2261,48 @@ int main(){
 									*SSU.SSRDR = eeprom.status; 
 								} break;
 								case 0x3:{ // READ - read from memory
-									eeprom.buffer.state = EEPROM_READING_HI;
+									eeprom.buffer.state = EEPROM_GETTING_ADDRESS_HI;
 								} break;
 							}
 
 						} break;
-						case EEPROM_READING_HI:{
+						case EEPROM_GETTING_ADDRESS_HI:{
 							eeprom.buffer.hiAddress = *SSU.SSTDR;
-							eeprom.buffer.state = EEPROM_READING_LO;
+							eeprom.buffer.state = EEPROM_GETTING_ADDRESS_LO;
 
 						} break;
 
-						case EEPROM_READING_LO:{
+						case EEPROM_GETTING_ADDRESS_LO:{
 							eeprom.buffer.loAddress = *SSU.SSTDR;
-							*SSU.SSRDR = eeprom.memory[(ssuBuffer[1] << 8) | *SSU.SSTDR];
+							*SSU.SSRDR = eeprom.memory[(eeprom.buffer.hiAddress << 8) | eeprom.buffer.loAddress];
 						} break;
 
-						case EEPROM_WRITING_BYTES:{
+						case EEPROM_GETTING_BYTES:{
 							return 1; // Invalid state
 						} break;
 					}
 				}
-				*SSU.SSSR = *SSU.SSSR | (1<<1); // // RDRF = 1. Receive Data Register Full
-				*SSU.SSSR = *SSU.SSSR | (1<<2); // // TDRE = 1. Transmit Data Register Empty
-				*SSU.SSSR = *SSU.SSSR | (1<<3); // TEND = 1. Transmit Data End. 
+				*SSU.SSSR = *SSU.SSSR | RDRF; 
+				*SSU.SSSR = *SSU.SSSR | TDRE; 
+				*SSU.SSSR = *SSU.SSSR | TEND; 
 			}
 		}
-		else if (*SSU.SSER & 0x80){ // TE flag. Transmission enabled
-			if(~*SSU.SSSR & 0x4){ // TDRE is 0 (not empty)
-				*SSU.SSSR = clearBit8(*SSU.SSSR, 2); // TDRE = 0. Transmit Data Empty.  
-				//SSU.SSTRSR = *SSU.SSTDR;
+		else if (*SSU.SSER & TE){ 
+			if(~*SSU.SSSR & TDRE){ 
 				// Accelerometer
-				if(~(getMemory8(PIN1)) & 0x1){ 
+				if(~(getMemory8(PIN9)) & 0x1){ 
 					switch(accel.buffer.state){
-						case ACCEL_EMPTY:{
+						case ACCEL_GETTING_ADDRESS:{
 							accel.buffer.address = *SSU.SSTDR;
-							accel.buffer.state = ACCEL_READING;
+							accel.buffer.state = ACCEL_GETTING_BYTES;
 						}break;
-						case ACCEL_READING:{
+						case ACCEL_GETTING_BYTES:{
 							accel.memory[accel.buffer.address] = *SSU.SSTDR;
 						}break;
 					}
 				}
 				// EEPROM
-				if(~(getMemory8(PIN9)) & 0x4){ 
+				if(~(getMemory8(PIN1)) & 0x4){ 
 					switch (eeprom.buffer.state) {
 						case EEPROM_EMPTY:{
 							switch(*SSU.SSTDR){
@@ -2324,56 +2311,49 @@ int main(){
 									// TODO: maybe not even needed, see if removing it changes anything
 								}break;
 								case 0x2: { // WRITE
-									eeprom.buffer.state = EEPROM_READING_HI;
+									eeprom.buffer.state = EEPROM_GETTING_ADDRESS_HI;
 								}break;
 							}
 
 						} break;
-						case EEPROM_READING_HI:{
+						case EEPROM_GETTING_ADDRESS_HI:{
 							eeprom.buffer.hiAddress = *SSU.SSTDR;
-							eeprom.buffer.state = EEPROM_READING_LO;
+							eeprom.buffer.state = EEPROM_GETTING_ADDRESS_LO;
 						} break;
 
-						case EEPROM_READING_LO:{
+						case EEPROM_GETTING_ADDRESS_LO:{
 							eeprom.buffer.loAddress = *SSU.SSTDR;
-							eeprom.buffer.state = EEPROM_WRITING_BYTES;
+							eeprom.buffer.state = EEPROM_GETTING_BYTES;
 						} break;
 
-						case EEPROM_WRITING_BYTES:{
+						case EEPROM_GETTING_BYTES:{
 							eeprom.memory[((eeprom.buffer.hiAddress << 8) | eeprom.buffer.loAddress) + eeprom.buffer.offset] = *SSU.SSTDR;
 							eeprom.buffer.offset = (eeprom.buffer.offset + 1) % EEPROM_PAGE_SIZE;
 						} break;
 					}
 				}
 
-				*SSU.SSSR = *SSU.SSSR | (1<<2); // TDRE = 1. Transmit Data Empty. (TODO: optimize away)
-				if (*SSU.SSER & 0b100){
+				//if (*SSU.SSER & 0b100){
 					// generate TX1. Maybe doesnt happen in the ROM
-				}
+				//}
 				// Here we'll start the transmission that'll take 8 cycles. But for now it happens instantly.
-				*SSU.SSSR = *SSU.SSSR | (1<<3); // TEND = 1. Transmit Data End. 
+				*SSU.SSSR = *SSU.SSSR | TDRE; 
+				*SSU.SSSR = *SSU.SSSR | TEND; 
 			}
 		}
-		else if (*SSU.SSER & 0x40){ // RE flag. Recieve enabled. 
-			return 1; //TODO: Check if this mode is used in the ROM
-			if(*SSU.SSRDR != 0){ // When we write data to SSRDR
-				*SSU.SSSR = *SSU.SSSR | (1<<1); // // RDRF = 1. Receive Data Register Full
-				SSU.SSTRSR = *SSU.SSRDR; // Manual says this doesnt happen, SSTRSR isnt used in recieves.
-				*SSU.SSRDR = 0;
-
-				*SSU.SSSR = clearBit8(*SSU.SSSR, 1); // RDRF = 0. Receive Data Register not Full   
-				// Here we'll start the transmission that'll take 8 cycles. But for now it happens instantly.
-				*SSU.SSER = clearBit8(*SSU.SSSR, 6); // RE = 0. 
-				*SSU.SSSR = clearBit8(*SSU.SSSR, 5); // RSSTP = 0. Receive single stop
-			}
+		else if (*SSU.SSER & RE){ 
+			return 1; // TODO: Check if this mode is used in the ROM
+		}
+	
+		if((getMemory8(PIN9)) & 0x1){ 
+			accel.buffer.state = ACCEL_GETTING_ADDRESS;
+			accel.buffer.offset = 0x0;
 		}
 		
-		else{ // TODO: can be optimized by checking when the pin gets sets instead of all the time
-			*SSU.SSRDR = 0;
+		if((getMemory8(PIN1)) & 0x4){ // TODO: can be optimized by checking when the pin gets sets instead of all the time
 			eeprom.buffer.state = EEPROM_EMPTY;
 			eeprom.buffer.offset = 0x0;
-			accel.buffer.state = ACCEL_EMPTY;
-			accel.buffer.offset = 0x0;
+			
 		}
 
 		pc+=2;
