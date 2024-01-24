@@ -18,6 +18,9 @@ uint8_t clearBit8(uint8_t operand, int bit){
 	return operand & ~(1 << bit);			
 }
 
+static int PIN1 = 0xFFD4;
+static int PIN9 = 0xFFDC;
+
 // General purpose registers
 static uint32_t* ER[8];
 static uint16_t* R[8];
@@ -41,7 +44,27 @@ struct Flags{
 static struct Flags flags;
 
 static uint8_t* memory;
-static uint8_t* accel_memory;
+static uint8_t* accelMemory;
+
+const static int EEPROM_PAGE_SIZE = 128;
+enum EEPROM_STATES{
+	EMPTY,
+	READING_HI,
+	READING_LO,
+	WRITING_BYTES
+};
+
+struct Eeprom_t{
+	uint8_t* memory;
+	uint8_t status;
+	struct buffer_t{
+		uint8_t hiAddress;
+		uint8_t loAddress;
+		enum EEPROM_STATES state;
+		uint8_t offset;
+	} buffer;
+};
+static struct Eeprom_t Eeprom;
 
 struct RegRef8 getRegRef8(uint8_t operand){
 	struct RegRef8 newRef;
@@ -240,11 +263,12 @@ struct SSU_t{
 };
 static struct SSU_t SSU;
 
-static uint8_t ssuBuffer[2];
+static int ssuBufferLastFilled;
+static uint8_t ssuBuffer[3];
 
 int main(){
-	//int entry = 0x02C4;
-	int entry = 0x0;
+	int entry = 0x02C4;
+	//int entry = 0x0;
 	mode = RUN;
 	int instructionsToStep = 0;
 
@@ -255,11 +279,20 @@ int main(){
 	memory = malloc(64 * 1024);
 	memset(memory, 0, 64 * 1024);
 
-	accel_memory = malloc(29);
-	memset(accel_memory, 0, 29);
-	accel_memory[0] = 0x2; // Chip id
+	Eeprom.memory = malloc(64 * 1024);
+	memset(Eeprom.memory, 0xFF, 64 * 1024);
+	Eeprom.status = 0x0;
+	Eeprom.buffer.state = EMPTY;
+	Eeprom.buffer.hiAddress = 0;
+	Eeprom.buffer.loAddress = 0;
+	Eeprom.buffer.offset = 0x0;
 
-	FILE* romFile = fopen("roms/shar.bin","r");
+	accelMemory = malloc(29);
+	memset(accelMemory, 0, 29);
+	accelMemory[0] = 0x2; // Chip id
+
+
+	FILE* romFile = fopen("roms/rom.bin","r");
 	if(!romFile){
 		printf("Can't find rom");
 	}
@@ -285,6 +318,7 @@ int main(){
 	*SSU.SSER = 0x0; 
 	*SSU.SSSR = 0x4; // TDRE = 1 (Transmit data empty) 
 	
+	ssuBufferLastFilled = -1;
 	memset(ssuBuffer, 0xFF, 2);
 	// Init general purpose registers
 	for(int i=0; i < 8;i++){
@@ -301,6 +335,13 @@ int main(){
 
 	int pc = entry;
 	while(pc != romSize){
+		// Skip certain instructions
+		if (pc == 0x336){ // Factory Tests
+			pc += 4;
+			printf("SKIP 0336 jsr factoryTestPerformIfNeeded:24\n");
+			continue;
+		}
+
 		uint16_t* currentInstruction = (uint16_t*)(memory + pc);
 		// IMPROVEMENT: maybe just use pointers to the ROM, left this way cause it seems cleaner
 		uint16_t ab = (*currentInstruction << 8) | (*currentInstruction >> 8); // 0xbHbL aHaL -> aHaL bHbL
@@ -935,18 +976,48 @@ int main(){
 							case 0x3:{
 								printf("%04x - NOT\n", pc);
 							}break;
-							case 0x5:
-							case 0x7:{
-								printf("%04x - EXTU\n", pc);
+							case 0x5:{ // EXTU.w Rd
+								struct RegRef16 Rd = getRegRef16(bL);
+								*Rd.ptr = *Rd.ptr & 0x00FF;
+								setFlagsMOV(*Rd.ptr, 16);
+								printf("%04x - EXTU.w %c%d\n", pc, Rd.loOrHiReg, Rd.idx);
+								printRegistersState();
+							} break;
+							case 0x7:{ // EXTU.l Rd
+								struct RegRef32 Rd = getRegRef32(bL);
+								*Rd.ptr = *Rd.ptr & 0x0000FFFF;
+								setFlagsMOV(*Rd.ptr, 32);
+								printf("%04x - EXTU.l er%d\n", pc, Rd.idx);
+								printRegistersState();
 							}break;
 							case 0x8:
 							case 0x9:
 							case 0xB:{
 								printf("%04x - NEG\n", pc);
 							}break;
-							case 0xD:
-							case 0xF:{
-								printf("%04x - EXTS\n", pc);
+							case 0xD:{ // EXTS.w Rd
+								struct RegRef16 Rd = getRegRef16(bL);
+								bool sign = *Rd.ptr & 0x80;
+								if (sign == 0){
+									*Rd.ptr = *Rd.ptr & 0x00FF;
+								} else{
+									*Rd.ptr = (*Rd.ptr & 0x00FF) | 0xFF00;
+								}
+								setFlagsMOV(*Rd.ptr, 16);
+								printf("%04x - EXTS.w %c%d\n", pc, Rd.loOrHiReg, Rd.idx);
+								printRegistersState();
+							} break;
+							case 0xF:{ // EXTS.l Rd
+								struct RegRef32 Rd = getRegRef32(bL);
+								bool sign = *Rd.ptr & 0x8000;
+								if (sign == 0){
+									*Rd.ptr = *Rd.ptr & 0x0000FFFF;
+								} else{
+									*Rd.ptr = (*Rd.ptr & 0x0000FFFF) | 0xFFFF0000;
+								}
+								setFlagsMOV(*Rd.ptr, 32);
+								printf("%04x - EXTS.l er%d\n", pc, Rd.idx);
+								printRegistersState();
 							}break;
 
 						}
@@ -1577,6 +1648,11 @@ int main(){
 								setFlagsMOV(value, 8);
 								*Rd.ptr = value;
 
+								
+								if(address == 0xfff0e9){ // SSSRDR
+									*SSU.SSSR = clearBit8(*SSU.SSSR, 1);
+								}
+
 								printf("%04x - MOV.b @%x:16, R%d%c\n", pc, address, Rd.idx, Rd.loOrHiReg); 
 								printRegistersState();
 
@@ -1590,7 +1666,12 @@ int main(){
 								uint8_t value = *Rs.ptr;
 								setFlagsMOV(value, 8);
 								setMemory8(address, value);
-
+								
+								if(address == 0xfff0eb){ // SSSTDR
+									*SSU.SSSR = clearBit8(*SSU.SSSR, 2); // TDRE
+									*SSU.SSSR = clearBit8(*SSU.SSSR, 3); // TEND
+								}
+								
 								printf("%04x - MOV.b R%d%c,@%x:16 \n", pc, Rs.idx, Rs.loOrHiReg, address); 
 								printMemory(address, 1);
 								printRegistersState();
@@ -1616,7 +1697,7 @@ int main(){
 
 							}break;
 
-							case 0x8:{ // MOV.B Rs, @aa:16 
+							case 0x8:{ // MOV.w Rs, @aa:16 
 								uint32_t address = (cd & 0x0000FFFF) | 0x00FF0000; // Upper 16 bits assumed to be 1
 
 								struct RegRef16 Rs = getRegRef16(bL);
@@ -2170,40 +2251,104 @@ int main(){
 		}
 
 		// SSU
+		if (~*SSU.SSER & 0x80){ // TE == 0
+			*SSU.SSSR |= 0x4; // Set TDRE
+		}
+
 		if ((*SSU.SSER & 0xC0) == 0xC0){ // TE and RE flags. Transmission and recieve enabled
-			if(*SSU.SSTDR != 0){ // When we write data to SSTDR
+			if(~*SSU.SSSR & 0x4){ // TDRE is 0 (not empty)
 				*SSU.SSSR = clearBit8(*SSU.SSSR, 1); // RDRF = 0. Clear Receive Data Register Full.  
 				// Here we'll start the transmission that'll take 8 cycles. But for now it happens instantly.
 				// Accelerometer
-				if(~(getMemory8(0xFFDC)) & 0x1){ // Pin 9 low
-					if(ssuBuffer[0] == 0xFF){
+				if(~(getMemory8(PIN9)) & 0x1){ 
+					if(ssuBufferLastFilled == -1){ // TODO: what if we need to read FF? maybe add flags for theese to check emptyness
 						ssuBuffer[0] = *SSU.SSTDR & 0x0F; // We'll store the address here. The "&" removes 0x80 (RW flag, not part of the address)
 						ssuBuffer[1] = 0; // And the offset here
+						ssuBufferLastFilled = 0;
 					} else{
-						*SSU.SSRDR = accel_memory[(ssuBuffer[0]) + ssuBuffer[1]]; 
+						*SSU.SSRDR = accelMemory[(ssuBuffer[0]) + ssuBuffer[1]]; 
 						ssuBuffer[1] += 1;
 					}					
 				}
-				*SSU.SSTDR = 0;
+				// EEPROM
+				if(~(getMemory8(PIN1)) & 0x4){ 
+					switch(Eeprom.buffer.state){
+						case EMPTY:{
+							switch(*SSU.SSTDR){
+								case 0x5:{ // RDSR - read status register
+									*SSU.SSRDR = Eeprom.status; 
+								} break;
+								case 0x3:{ // READ - read from memory
+									Eeprom.buffer.state = READING_HI;
+								} break;
+							}
+
+						} break;
+						case READING_HI:{
+							Eeprom.buffer.hiAddress = *SSU.SSTDR;
+							Eeprom.buffer.state = READING_LO;
+
+						} break;
+
+						case READING_LO:{
+							Eeprom.buffer.loAddress = *SSU.SSTDR;
+							*SSU.SSRDR = Eeprom.memory[(ssuBuffer[1] << 8) | *SSU.SSTDR];
+						} break;
+					}
+				}
 				*SSU.SSSR = *SSU.SSSR | (1<<1); // // RDRF = 1. Receive Data Register Full
+				*SSU.SSSR = *SSU.SSSR | (1<<2); // // TDRE = 1. Transmit Data Register Empty
 				*SSU.SSSR = *SSU.SSSR | (1<<3); // TEND = 1. Transmit Data End. 
 			}
 		}
 		else if (*SSU.SSER & 0x80){ // TE flag. Transmission enabled
-			if(*SSU.SSTDR != 0){ // When we write data to SSTDR
+			if(~*SSU.SSSR & 0x4){ // TDRE is 0 (not empty)
 				*SSU.SSSR = clearBit8(*SSU.SSSR, 2); // TDRE = 0. Transmit Data Empty.  
 				//SSU.SSTRSR = *SSU.SSTDR;
 				// Accelerometer
-				if(~(getMemory8(0xFFDC)) & 0x1){ // Pin 9 low
-					if(ssuBuffer[0] == 0xFF){
+				if(~(getMemory8(PIN1)) & 0x1){ 
+					if(ssuBufferLastFilled == -1){
 						ssuBuffer[0] = *SSU.SSTDR;
-					} else if (ssuBuffer[1] == 0xFF){
+						ssuBufferLastFilled = 0;
+					} else if (ssuBufferLastFilled == 0){
 						ssuBuffer[1] = *SSU.SSTDR;
-						accel_memory[ssuBuffer[0]] = ssuBuffer[1];
+						accelMemory[ssuBuffer[0]] = ssuBuffer[1];
 						memset(ssuBuffer, 0xFF, 2);
+						ssuBufferLastFilled = -1;
 					} 	
 				}
-				*SSU.SSTDR = 0;
+				// EEPROM
+				if(~(getMemory8(PIN9)) & 0x4){ 
+					switch (Eeprom.buffer.state) {
+						case EMPTY:{
+							switch(*SSU.SSTDR){
+								case 0x6:{ // WREN - write enable
+									Eeprom.status |= 0x2; // WEL - write enable latch. Note: I dont see any WRDI or WRSR instructions in the ROM that disable this latch, could cause issues later on
+									// TODO: maybe not even needed, see if removing it changes anything
+								}break;
+								case 0x2: { // WRITE
+									Eeprom.buffer.state = READING_HI;
+								}break;
+							}
+
+						} break;
+						case READING_HI:{
+							Eeprom.buffer.hiAddress = *SSU.SSTDR;
+							Eeprom.buffer.state = READING_LO;
+						} break;
+
+						case READING_LO:{
+							Eeprom.buffer.loAddress = *SSU.SSTDR;
+							Eeprom.buffer.state = WRITING_BYTES;
+						} break;
+
+						case WRITING_BYTES:{
+							Eeprom.memory[((Eeprom.buffer.hiAddress << 8) | Eeprom.buffer.loAddress) + Eeprom.buffer.offset] = *SSU.SSTDR;
+							Eeprom.buffer.offset = (Eeprom.buffer.offset + 1) % EEPROM_PAGE_SIZE;
+						} break;
+					}
+				}
+
 				*SSU.SSSR = *SSU.SSSR | (1<<2); // TDRE = 1. Transmit Data Empty. (TODO: optimize away)
 				if (*SSU.SSER & 0b100){
 					// generate TX1. Maybe doesnt happen in the ROM
@@ -2226,8 +2371,11 @@ int main(){
 			}
 		}
 		
-		if((getMemory8(0xFFDC)) & 0x1){ // Pin 9 high
+		else{ // TODO: can be optimized by checking when the pin gets sets instead of all the time
 			*SSU.SSRDR = 0;
+			Eeprom.buffer.state = EMPTY;
+			Eeprom.buffer.offset = 0x0;
+			ssuBufferLastFilled = -1;
 			memset(ssuBuffer, 0xFF, 2);
 		}
 
