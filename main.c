@@ -361,7 +361,7 @@ int main(){
 		uint8_t fL = f & 0xF;
 
 		uint32_t cdef = cd << 16 | ef;
-		if (pc == 0xb0b6) {
+		if (pc == 0x3b2) {
 			int x = 3;
 		}
 		switch(aH){
@@ -447,7 +447,7 @@ int main(){
 									case 0x6F:{ 
 										uint16_t disp = ef;
 										bool msbDisp = disp & 0x8000;
-										uint32_t signExtendedDisp = msbDisp ? (0xFFFF0000 & disp) : disp;
+										uint32_t signExtendedDisp = msbDisp ? (0xFFFF0000 | disp) : disp;
 
 										if (!(dH & 0b1000)){ // From memory @(d:16, ERs), ERd
 											struct RegRef32 Rs = getRegRef32(dH);
@@ -1783,7 +1783,7 @@ int main(){
 
 						uint16_t disp = cd;
 						bool msbDisp = disp & 0x8000;
-						uint32_t signExtendedDisp = msbDisp ? (0xFFFF0000 & disp) : disp;
+						uint32_t signExtendedDisp = msbDisp ? (0xFFFF0000 | disp) : disp;
 
 						if (!(bH & 0b1000)){ // From memory MOV.B @(d:16, ERs), Rd
 							uint8_t value = getMemory8(*Rs.ptr + signExtendedDisp);
@@ -1809,7 +1809,7 @@ int main(){
 						struct RegRef32 Rs = getRegRef32(bH);
 						uint16_t disp = cd;
 						bool msbDisp = disp & 0x8000;
-						uint32_t signExtendedDisp = msbDisp ? (0xFFFF0000 & disp) : disp;
+						uint32_t signExtendedDisp = msbDisp ? (0xFFFF0000 | disp) : disp;
 
 						if (!(bH & 0b1000)){ // From memory MOV.W @(d:16, ERs), Rd
 							uint16_t value = getMemory16(*Rs.ptr + signExtendedDisp);
