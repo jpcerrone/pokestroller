@@ -7,6 +7,10 @@
 
 #include "main.h"
 
+#ifndef PRINT_STATE
+#define printf 
+#endif
+
 enum Mode{
 	STEP,
 	RUN
@@ -73,20 +77,24 @@ struct RegRef32 getRegRef32(uint8_t operand){
 }
 
 void printRegistersState(){
+#ifdef PRINT_STATE
 	for(int i=0; i < 8; i++){
 		printf("ER%d: [0x%08X], ", i, *ER[i]); 
 	}
 	printf("\n");
 	printf("I: %d, H: %d, N: %d, Z: %d, V: %d, C: %d ", flags.I, flags.H, flags.N, flags.Z, flags.V, flags.C);
 	printf("\n\n");
+#endif
 
 }
 
 void printMemory(uint32_t address, int byteCount){
+#ifdef PRINT_STATE
 	address = address & 0x0000ffff; // Keep lower 16 bits only
 	for(int i = 0; i < byteCount; i++){ 
 		printf("MEMORY - 0x%04x -> %02x\n", address + i, memory[address + i]);
 	}
+#endif
 }
 
 // With masking here we're ignoring the 0x00XX0000 part of the address for this emulator, as we have one big memory block that goes up to 0xFFFF
@@ -353,6 +361,9 @@ int main(){
 		uint8_t fL = f & 0xF;
 
 		uint32_t cdef = cd << 16 | ef;
+		if (pc == 0xb0b6) {
+			int x = 3;
+		}
 		switch(aH){
 			case 0x0:{
 				switch(aL){
@@ -2235,7 +2246,7 @@ int main(){
 			*SSU.SSSR |= TDRE; // Set TDRE
 		}
 
-		if ((*SSU.SSER & (TE & RE)) == (TE & RE)){ // Transmission and recieve enabled
+		if ((*SSU.SSER & (TE | RE)) == (TE | RE)){ // Transmission and recieve enabled
 			if(~*SSU.SSSR & TDRE){ 
 				// Here we'll start the transmission that'll take 8 cycles. But for now it happens instantly.
 				// Accelerometer
@@ -2274,11 +2285,12 @@ int main(){
 
 						case EEPROM_GETTING_ADDRESS_LO:{
 							eeprom.buffer.loAddress = *SSU.SSTDR;
-							*SSU.SSRDR = eeprom.memory[(eeprom.buffer.hiAddress << 8) | eeprom.buffer.loAddress];
+							eeprom.buffer.state = EEPROM_GETTING_BYTES;
 						} break;
 
 						case EEPROM_GETTING_BYTES:{
-							return 1; // Invalid state
+							*SSU.SSRDR = eeprom.memory[((eeprom.buffer.hiAddress << 8) | eeprom.buffer.loAddress) + eeprom.buffer.offset];
+							eeprom.buffer.offset  = (eeprom.buffer.offset + 1) % EEPROM_PAGE_SIZE;
 						} break;
 					}
 				}
@@ -2352,6 +2364,7 @@ int main(){
 		
 		if((getMemory8(PIN1)) & 0x4){ // TODO: can be optimized by checking when the pin gets sets instead of all the time
 			eeprom.buffer.state = EEPROM_EMPTY;
+			eeprom.buffer.offset = 0x0;
 			eeprom.buffer.offset = 0x0;
 			
 		}
