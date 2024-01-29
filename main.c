@@ -49,7 +49,6 @@ static struct Flags flags;
 
 static uint8_t* memory;
 
-
 static struct Accelerometer_t accel;
 static struct Eeprom_t eeprom;
 
@@ -328,6 +327,11 @@ int main(){
 			pc += 4;
 			printf("SKIP 0336 jsr factoryTestPerformIfNeeded:24\n");
 			continue;
+		} if (pc == 0x350){ // Check battery
+			pc += 4;
+			printf("SKIP 350 jsr checkBatteryForBelowGivenLevel:24\n");
+			*RL[0] = 0;
+			continue;
 		}
 
 		uint16_t* currentInstruction = (uint16_t*)(memory + pc);
@@ -361,7 +365,7 @@ int main(){
 		uint8_t fL = f & 0xF;
 
 		uint32_t cdef = cd << 16 | ef;
-		if (pc == 0x28c0) {
+		if (pc == 0x2488) {
 			int x = 3;
 		}
 		switch(aH){
@@ -557,8 +561,10 @@ int main(){
 											uint8_t mostSignificantBit = dH >> 7;
 											if (mostSignificantBit == 0x1){
 												printf("%04x - STC\n", pc);
+												return 1; // UNIMPLEMENTED
 											}else{
 												printf("%04x - LDC\n", pc);
+											return 1; // UNIMPLEMENTED
 											}
 										}break;
 									}
@@ -566,6 +572,7 @@ int main(){
 							}break;
 							case 0x8:{
 								printf("%04x - SLEEP\n", pc);
+								return 1; // UNIMPLEMENTED
 							}break;
 							case 0xC:{
 								if (bL == 0x0 && cH == 0x5){
@@ -639,12 +646,15 @@ int main(){
 									switch(cL){ // TODO replace with if, and see if merging it with C & F makes it more readable
 										case 0x4:{
 											printf("%04x - OR\n", pc);
+											return 1; // UNIMPLEMENTED
 										}break;
 										case 0x5:{
 											printf("%04x - XOR\n", pc);
+											return 1; // UNIMPLEMENTED
 										}break;
 										case 0x6:{
 											printf("%04x - AND\n", pc);
+											return 1; // UNIMPLEMENTED
 										}break;
 									}
 								};
@@ -652,27 +662,34 @@ int main(){
 
 							default:{
 								printf("???\n");
+								return 1; // UNIMPLEMENTED
 							}break;
 
 						}
 					}break;
 					case 0x2:{
 						printf("%04x - STC\n", pc);
+						return 1; // UNIMPLEMENTED
 					}break;
 					case 0x3:{
 						printf("%04x - LDC\n", pc);
+						return 1; // UNIMPLEMENTED
 					}break;
 					case 0x4:{
 						printf("%04x - ORC\n", pc);
+						return 1; // UNIMPLEMENTED
 					}break;
 					case 0x5:{
 						printf("%04x - XORC\n", pc);
+						return 1; // UNIMPLEMENTED
 					}break;
 					case 0x6:{
 						printf("%04x - ANDC\n", pc);
+						return 1; // UNIMPLEMENTED
 					}break;
 					case 0x7:{
 						printf("%04x - LDC\n", pc);
+						return 1; // UNIMPLEMENTED
 					}break;
 					case 0x8:{ // ADD.B Rs, Rd
 						struct RegRef8 Rs = getRegRef8(bH);
@@ -792,11 +809,13 @@ int main(){
 					}break;
 					case 0xE:{
 						printf("%04x - ADDX\n", pc);
+						return 1; // UNIMPLEMENTED
 					}break;
 					case 0xF:{
 						switch(bH){
 							case 0x0:{
 								printf("%04x - DAA\n", pc);
+								return 1; // UNIMPLEMENTED
 							}break;
 							case 0x8:
 							case 0x9:
@@ -1010,6 +1029,7 @@ int main(){
 							case 0x1:
 							case 0x3:{
 								printf("%04x - NOT\n", pc);
+								return 1; // UNIMPLEMENTED
 							}break;
 							case 0x5:{ // EXTU.w Rd
 								struct RegRef16 Rd = getRegRef16(bL);
@@ -1029,6 +1049,7 @@ int main(){
 							case 0x9:
 							case 0xB:{
 								printf("%04x - NEG\n", pc);
+								return 1; // UNIMPLEMENTED
 							}break;
 							case 0xD:{ // EXTS.w Rd
 								struct RegRef16 Rd = getRegRef16(bL);
@@ -1182,11 +1203,13 @@ int main(){
 					}break;
 					case 0xE:{
 						printf("%04x - SUBX\n", pc);
+						return 1; // UNIMPLEMENTED
 					}break;
 					case 0xF:{
 						switch(bH){
 							case 0x0:{
 								printf("%04x - DAS\n", pc);
+								return 1; // UNIMPLEMENTED
 							}break;
 							case 0x8:
 							case 0x9:
@@ -1247,6 +1270,7 @@ int main(){
 					}break;
 					case 0x1:{ // Unused in the ROM
 						printf("%04x - BRN %d:8\n", pc, disp);
+						return 1; // UNIMPLEMENTED
 					}break;
 					case 0x2:{
 						printf("%04x - BHI %d:8\n", pc, disp);
@@ -1414,9 +1438,11 @@ int main(){
 					}break;
 					case 0x6:{
 						printf("%04x - RTE\n", pc);
+						return 1; // UNIMPLEMENTED
 					}break;
 					case 0x7:{
 						printf("%04x - TRAPA\n", pc);
+						return 1; // UNIMPLEMENTED
 					}break;
 					case 0x8:{
 						int16_t disp = cd;
@@ -1614,6 +1640,7 @@ int main(){
 					}break;
 					case 0x1:{
 						printf("%04x - BNOT\n", pc);
+						return 1; // UNIMPLEMENTED
 					}break;
 					case 0x2:{ // BCLR Rn, Rd
 						struct RegRef8 Rd = getRegRef8(bL);		
@@ -1627,6 +1654,7 @@ int main(){
 					}break;
 					case 0x3:{
 						printf("%04x - BTST\n", pc);
+						return 1; // UNIMPLEMENTED
 					}break;
 					case 0x4:{ // OR.w Rs, Rd
 						struct RegRef16 Rd = getRegRef16(bL);
@@ -1982,6 +2010,7 @@ int main(){
 					}break;
 					case 0x8:{
 						printf("%04x - MOV\n", pc);
+						return 1; // UNIMPLEMENTED
 					}break;
 					case 0x9:{ // XXX.w #xx:16, Rd
 						struct RegRef16 Rd = getRegRef16(bL);
@@ -2077,6 +2106,7 @@ int main(){
 					}break;
 					case 0xB:{
 						printf("%04x - EEPMOV\n", pc);
+						return 1; // UNIMPLEMENTED
 					}break;
 					case 0xC:{
 						uint8_t mostSignificantBit = dH >> 7;
@@ -2104,6 +2134,7 @@ int main(){
 							switch(cL){
 								case 0x3:{
 									printf("%04x - BTST\n", pc);
+									return 1; // UNIMPLEMENTED
 								}break;
 							}
 						}else if (cH == 0x7){
@@ -2252,6 +2283,7 @@ int main(){
 			}break;
 			case 0x9:{
 				printf("%04x - ADDX\n", pc);
+				return 1; // UNIMPLEMENTED
 			}break;
 
 			case 0xA:{ // CMP.B #xx:8, Rd
@@ -2268,6 +2300,7 @@ int main(){
 
 			case 0xB:{
 				printf("%04x - SUBX\n", pc);
+				return 1; // UNIMPLEMENTED
 			}break;
 
 			case 0xC:{ // OR.b #xx:8, Rd
@@ -2320,6 +2353,7 @@ int main(){
 
 			default:{
 				printf("???\n");
+				return 1; // UNIMPLEMENTED
 			} break;
 		}
 
