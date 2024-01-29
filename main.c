@@ -361,7 +361,7 @@ int main(){
 		uint8_t fL = f & 0xF;
 
 		uint32_t cdef = cd << 16 | ef;
-		if (pc == 0x3b2) {
+		if (pc == 0x28c0) {
 			int x = 3;
 		}
 		switch(aH){
@@ -568,12 +568,32 @@ int main(){
 								printf("%04x - SLEEP\n", pc);
 							}break;
 							case 0xC:{
-								pc+=2;
 								if (bL == 0x0 && cH == 0x5){
 									switch(cL){
-										case 0x0:
+										case 0x0:{ // MULXS B Rs, Rd
+											struct RegRef8 Rs = getRegRef8(dH);
+											struct RegRef16 Rd = getRegRef16(dL);
+											int8_t lowerBitsRd = *Rd.ptr & 0x00FF;
+											*Rd.ptr = (int16_t)*Rs.ptr * (int16_t)lowerBitsRd; 
+											flags.Z = (*Rd.ptr == 0) ? 1 : 0;
+											flags.N = (*Rd.ptr & 0x8000) ? 1 : 0;
+
+											printf("%04x - MULXS B r%d%c, %c%d\n", pc, Rs.idx, Rs.loOrHiReg, Rd.loOrHiReg, Rd.idx);
+											printRegistersState();
+											pc += 2;
+										} break;
 										case 0x2:{
-											printf("%04x - MULXS\n", pc);
+											// MULXS W Rs, Rd
+											struct RegRef16 Rs = getRegRef16(dH);
+											struct RegRef32 Rd = getRegRef32(dL);
+											int16_t lowerBitsRd = *Rd.ptr & 0x0000FFFF;
+											*Rd.ptr = (int32_t)*Rs.ptr * (int32_t)lowerBitsRd;
+											flags.Z = (*Rd.ptr == 0) ? 1 : 0;
+											flags.N = (*Rd.ptr & 0x80000000) ? 1 : 0;
+
+											printf("%04x - MULXS W %c%d, er%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.idx);
+											printRegistersState();
+											pc += 2;
 										}break;
 									}
 								};
@@ -582,9 +602,33 @@ int main(){
 								pc+=2;
 								if (bL == 0x0 && cH == 0x5){
 									switch(cL){ // TODO replace with if, and see if merging it with C & F makes it more readable
-										case 0x1:
-										case 0x3:{
-											printf("%04x - DIVXS\n", pc);
+										case 0x1:{ // DIVXS B Rs, Rd
+											struct RegRef8 Rs = getRegRef8(dH);
+											struct RegRef16 Rd = getRegRef16(dL);
+											int8_t quotient = (int16_t)*Rd.ptr / (int8_t)*Rs.ptr;
+											int8_t remainder = (int16_t)*Rd.ptr % (int8_t)*Rs.ptr; // Following C99 rules for the sign of quotient and remainder, the actual behaviour isnt really documented in the H800 manual
+											*Rd.ptr = (remainder << 8) | quotient;
+
+											flags.Z = (*Rs.ptr == 0) ? 1 : 0;
+											flags.N = (((int16_t)quotient) > 0) ? 0 : 1;
+
+											printf("%04x - DIVXS B r%d%c, %c%d\n", pc, Rs.idx, Rs.loOrHiReg, Rd.loOrHiReg, Rd.idx);
+											printRegistersState();
+											pc += 2;
+										} break;
+										case 0x3:{ // DIVXS W Rs, Rd
+											struct RegRef16 Rs = getRegRef16(dH);
+											struct RegRef32 Rd = getRegRef32(dL);
+											int16_t quotient = (int32_t)*Rd.ptr / (int16_t)*Rs.ptr;
+											int16_t remainder = (int32_t)*Rd.ptr % (int16_t)*Rs.ptr; 
+											*Rd.ptr = (remainder << 16) | quotient;
+
+											flags.Z = (*Rs.ptr == 0) ? 1 : 0;
+											flags.N = (quotient & 0x80000000) ? 1 : 0;
+
+											printf("%04x - DIVXU W %c%d, er%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.idx);
+											printRegistersState();
+											pc += 2;
 										}break;
 									}
 								};
@@ -1294,13 +1338,51 @@ int main(){
 			}break;
 			case 0x5:{
 				switch(aL){
-					case 0x0:
-					case 0x2:{
-						printf("%04x - MULXU\n", pc);
+					case 0x0:{ // MULXU B Rs, Rd
+						struct RegRef8 Rs = getRegRef8(bH);
+						struct RegRef16 Rd = getRegRef16(bL);
+						uint8_t lowerBitsRd = *Rd.ptr & 0x00FF;
+						*Rd.ptr = *Rs.ptr * lowerBitsRd;
+						printf("%04x - MULXU B r%d%c, %c%d\n", pc, Rs.idx, Rs.loOrHiReg, Rd.loOrHiReg, Rd.idx);
+						printRegistersState();
+					} break;
+					case 0x2:{// MULXU W Rs, Rd
+						struct RegRef16 Rs = getRegRef16(bH);
+						struct RegRef32 Rd = getRegRef32(bL);
+						uint16_t lowerBitsRd = *Rd.ptr & 0x0000FFFF;
+						*Rd.ptr = *Rs.ptr * lowerBitsRd;
+
+						printf("%04x - MULXU W %c%d, er%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.idx);
+						printRegistersState();
 					}break;
-					case 0x1:
-					case 0x3:{
-						printf("%04x - DIVXU\n", pc);
+					case 0x1:{ // DIVXU B Rs, Rd
+						struct RegRef8 Rs = getRegRef8(bH);
+						struct RegRef16 Rd = getRegRef16(bL);
+						uint8_t quotient = *Rd.ptr / *Rs.ptr;
+						uint8_t remainder = *Rd.ptr % *Rs.ptr; 
+						*Rd.ptr = (remainder << 8) | quotient;
+
+						flags.Z = (*Rs.ptr == 0) ? 1 : 0;
+						flags.N = (*Rs.ptr & 0x8000) ? 1 : 0;
+
+						printf("%04x - DIVXU B r%d%c, %c%d\n", pc, Rs.idx, Rs.loOrHiReg, Rd.loOrHiReg, Rd.idx);
+						printRegistersState();
+
+
+					} break;
+					case 0x3:{ // DIVXU W Rs, Rd
+						struct RegRef16 Rs = getRegRef16(bH);
+						struct RegRef32 Rd = getRegRef32(bL);
+						uint16_t quotient = *Rd.ptr / *Rs.ptr;
+						uint16_t remainder = *Rd.ptr % *Rs.ptr; 
+						*Rd.ptr = (remainder << 16) | quotient;
+
+						flags.Z = (*Rs.ptr == 0) ? 1 : 0;
+						flags.N = (*Rs.ptr & 0x80000000) ? 1 : 0;
+
+						printf("%04x - DIVXU W %c%d, er%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.idx);
+						printRegistersState();
+						
 					}break;
 					case 0x4:{ // RTS
 						printf("%04x - RTS\n", pc);
