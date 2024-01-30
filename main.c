@@ -22,8 +22,8 @@ uint8_t clearBit8(uint8_t operand, int bit){
 	return operand & ~(1 << bit);			
 }
 
-static int PIN1 = 0xFFD4;
-static int PIN9 = 0xFFDC;
+static int PORT1 = 0xFFD4;
+static int PORT9 = 0xFFDC;
 
 // General purpose registers
 static uint32_t* ER[8];
@@ -51,6 +51,7 @@ static uint8_t* memory;
 
 static struct Accelerometer_t accel;
 static struct Eeprom_t eeprom;
+static struct Lcd_t lcd;
 
 struct RegRef8 getRegRef8(uint8_t operand){
 	struct RegRef8 newRef;
@@ -281,6 +282,11 @@ int main(){
 	memset(accel.memory, 0, 29);
 	accel.memory[0] = 0x2; // Chip id
 
+	memset(&lcd, 0, sizeof(lcd));
+	lcd.powerSave = false; 
+	lcd.contrast = 20;
+	lcd.state = LCD_EMPTY;
+
 	FILE* romFile = fopen("roms/rom.bin","r");
 	if(!romFile){
 		printf("Can't find rom");
@@ -333,6 +339,11 @@ int main(){
 			*RL[0] = 0;
 			continue;
 		}
+		if (pc == 0x36e){ // Set RTC
+			pc += 4;
+			printf("SKIP 36E jsr delaySomewhatAndThenSetTheRtc:24\n");
+			continue;
+		}
 
 		uint16_t* currentInstruction = (uint16_t*)(memory + pc);
 		// IMPROVEMENT: maybe just use pointers to the ROM, left this way cause it seems cleaner
@@ -365,7 +376,7 @@ int main(){
 		uint8_t fL = f & 0xF;
 
 		uint32_t cdef = cd << 16 | ef;
-		if (pc == 0x2488) {
+		if (pc == 0x38c) {
 			int x = 3;
 		}
 		switch(aH){
@@ -2366,7 +2377,7 @@ int main(){
 			if(~*SSU.SSSR & TDRE){ 
 				// Here we'll start the transmission that'll take 8 cycles. But for now it happens instantly.
 				// Accelerometer
-				if(~(getMemory8(PIN9)) & 0x1){ // TODO: find more readable way to deal with pins
+				if(~(getMemory8(PORT9)) & ACCEL_PIN){ // TODO: find more readable way to deal with pins
 					switch(accel.buffer.state){
 						case ACCEL_GETTING_ADDRESS:{
 							accel.buffer.address = *SSU.SSTDR & 0x0F; // The "&" removes 0x80 (RW flag, not part of the address)
@@ -2380,7 +2391,7 @@ int main(){
 					}
 				}
 				// EEPROM
-				if(~(getMemory8(PIN1)) & 0x4){ 
+				if(~(getMemory8(PORT1)) & EEPROM_PIN){ 
 					switch(eeprom.buffer.state){
 						case EEPROM_EMPTY:{
 							switch(*SSU.SSTDR){
@@ -2418,7 +2429,7 @@ int main(){
 		else if (*SSU.SSER & TE){ 
 			if(~*SSU.SSSR & TDRE){ 
 				// Accelerometer
-				if(~(getMemory8(PIN9)) & 0x1){ 
+				if(~(getMemory8(PORT9)) & ACCEL_PIN){ 
 					switch(accel.buffer.state){
 						case ACCEL_GETTING_ADDRESS:{
 							accel.buffer.address = *SSU.SSTDR;
@@ -2430,7 +2441,7 @@ int main(){
 					}
 				}
 				// EEPROM
-				if(~(getMemory8(PIN1)) & 0x4){ 
+				if(~(getMemory8(PORT1)) & EEPROM_PIN){ 
 					switch (eeprom.buffer.state) {
 						case EEPROM_EMPTY:{
 							switch(*SSU.SSTDR){
@@ -2460,7 +2471,34 @@ int main(){
 						} break;
 					}
 				}
+				// LCD
+				if(~(getMemory8(PORT1)) & LCD_PIN){ 
+					switch(lcd.state){
+						case LCD_EMPTY:{
+							switch(*SSU.SSTDR){
+								case 0xE1:{ // Exit power save mode
+									lcd.powerSave = false; // TODO: see if this is even necesary
+								}break;
+								case 0xAE:{ // Display OFF 
+									lcd.displayOn = false; 
+								}break;case 0xAF:{ // Display ON 
+									lcd.displayOn = true; 
+								}break;
+								case 0x81:{
+									lcd.state = LCD_READING_CONTRAST;
+								} break;
+								default:{
+									// Well ignore most commands
+								} break;
+							}
+						} break;
+						case LCD_READING_CONTRAST:{
+							lcd.contrast = *SSU.SSTDR;
+							lcd.state = LCD_EMPTY;
+						}break;
 
+					}
+				}
 				//if (*SSU.SSER & 0b100){
 					// generate TX1. Maybe doesnt happen in the ROM
 				//}
@@ -2473,12 +2511,12 @@ int main(){
 			return 1; // TODO: Check if this mode is used in the ROM
 		}
 	
-		if((getMemory8(PIN9)) & 0x1){ 
+		if((getMemory8(PORT9)) & 0x1){ 
 			accel.buffer.state = ACCEL_GETTING_ADDRESS;
 			accel.buffer.offset = 0x0;
 		}
 		
-		if((getMemory8(PIN1)) & 0x4){ // TODO: can be optimized by checking when the pin gets sets instead of all the time
+		if((getMemory8(PORT1)) & 0x4){ // TODO: can be optimized by checking when the pin gets sets instead of all the time
 			eeprom.buffer.state = EEPROM_EMPTY;
 			eeprom.buffer.offset = 0x0;
 			eeprom.buffer.offset = 0x0;

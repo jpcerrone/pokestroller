@@ -21,6 +21,7 @@ struct RegRef32{
 
 // -- EEPROM
 const static int EEPROM_PAGE_SIZE = 128;
+#define EEPROM_PIN 0x4
 
 enum EEPROM_STATES{
 	EEPROM_EMPTY,
@@ -42,6 +43,7 @@ struct Eeprom_t{
 // --
 
 // -- Accelerometer
+#define ACCEL_PIN 0x1
 enum ACCEL_STATES{
 	ACCEL_GETTING_ADDRESS,
 	ACCEL_GETTING_BYTES,
@@ -54,4 +56,18 @@ struct Accelerometer_t{
 		uint8_t offset;
 		enum ACCEL_STATES state;
 	} buffer;
+};
+
+// -- LCD
+#define LCD_PIN 0x1
+enum LCD_STATES{
+	LCD_EMPTY,
+	LCD_READING_CONTRAST,
+};
+struct Lcd_t{
+	bool powerSave;
+	bool displayOn;
+	uint8_t contrast;
+	enum LCD_STATES state;
+
 };
