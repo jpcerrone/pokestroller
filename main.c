@@ -47,6 +47,17 @@ struct Flags{
 };	
 static struct Flags flags;
 
+void setFlags(uint8_t value){
+	flags.C = value & (1<<0);
+	flags.V = value & (1<<1);
+	flags.Z = value & (1<<2);
+	flags.N = value & (1<<3);
+	flags.U = value & (1<<4);
+	flags.H = value & (1<<5);
+	flags.UI = value & (1<<6);
+	flags.I = value & (1<<7);
+}
+
 static uint8_t* memory;
 
 static struct Accelerometer_t accel;
@@ -376,7 +387,7 @@ int main(){
 		uint8_t fL = f & 0xF;
 
 		uint32_t cdef = cd << 16 | ef;
-		if (pc == 0x38c) {
+		if (pc == 0x0394) {
 			int x = 3;
 		}
 		switch(aH){
@@ -571,11 +582,9 @@ int main(){
 										case 0xF:{
 											uint8_t mostSignificantBit = dH >> 7;
 											if (mostSignificantBit == 0x1){
-												printf("%04x - STC\n", pc);
-												return 1; // UNIMPLEMENTED
+												printf("%04x - STC\n", pc);// Unused in the ROM
 											}else{
-												printf("%04x - LDC\n", pc);
-											return 1; // UNIMPLEMENTED
+												printf("%04x - LDC\n", pc); // Unused in the ROM
 											}
 										}break;
 									}
@@ -679,12 +688,15 @@ int main(){
 						}
 					}break;
 					case 0x2:{
-						printf("%04x - STC\n", pc);
-						return 1; // UNIMPLEMENTED
+						printf("%04x - STC\n", pc); // Unused in the ROM
 					}break;
-					case 0x3:{
-						printf("%04x - LDC\n", pc);
-						return 1; // UNIMPLEMENTED
+					case 0x3:{ // LDC.B Rs, CCR
+						*RH[1] = 0b10101010;
+						struct RegRef8 Rs = getRegRef8(bL);
+						uint8_t value = *Rs.ptr;
+						setFlags(value);
+						printf("%04x - LDC.B r%d%c, CCR\n", pc, Rs.idx, Rs.loOrHiReg);
+						printRegistersState();
 					}break;
 					case 0x4:{
 						printf("%04x - ORC\n", pc);
@@ -698,9 +710,11 @@ int main(){
 						printf("%04x - ANDC\n", pc);
 						return 1; // UNIMPLEMENTED
 					}break;
-					case 0x7:{
-						printf("%04x - LDC\n", pc);
-						return 1; // UNIMPLEMENTED
+					case 0x7:{ // LDC.B #xx:8, CCR
+						uint8_t value = b;
+						setFlags(value);
+						printf("%04x - LDC.B #%x:8, CCR\n", pc, value);
+						printRegistersState();
 					}break;
 					case 0x8:{ // ADD.B Rs, Rd
 						struct RegRef8 Rs = getRegRef8(bH);
