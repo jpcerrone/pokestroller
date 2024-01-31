@@ -387,7 +387,7 @@ int main(){
 		uint8_t fL = f & 0xF;
 
 		uint32_t cdef = cd << 16 | ef;
-		if (pc == 0x0394) {
+		if (pc == 0x7978) {
 			int x = 3;
 		}
 		switch(aH){
@@ -591,8 +591,7 @@ int main(){
 								}
 							}break;
 							case 0x8:{
-								printf("%04x - SLEEP\n", pc);
-								return 1; // UNIMPLEMENTED
+								printf("%04x - SLEEP\n", pc); // Not sleeping for now
 							}break;
 							case 0xC:{
 								if (bL == 0x0 && cH == 0x5){
@@ -1609,7 +1608,7 @@ int main(){
 					case 0x9:{ // JMP @ERn
 						struct RegRef32 Er = getRegRef32(bH);
 						printf("%04x - JMP @ER%d\n", pc, Er.idx);
-						pc = *Er.ptr - 2; // Sub 2 cause we're incrementing 2 at the end of the loop
+						pc = (*Er.ptr & 0x0000FFFF) - 2; // Sub 2 cause we're incrementing 2 at the end of the loop
 					}break;
 					case 0xA:{ // JMP @aa:24
 						uint32_t address = (b << 16) | cd;
@@ -1626,7 +1625,7 @@ int main(){
 						setMemory16(*SP, pc + 2);
 
 						printf("%04x - JSR @ER%d\n", pc, Er.idx);
-						pc = *Er.ptr - 2; // Sub 2 cause we're incrementing 2 at the end of the loop
+						pc = (*Er.ptr & 0x0000FFFF) - 2; // Sub 2 cause we're incrementing 2 at the end of the loop
 
 						printMemory(*SP, 2);
 						printRegistersState();
