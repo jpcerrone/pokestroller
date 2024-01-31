@@ -355,6 +355,19 @@ int main(){
 			printf("SKIP 36E jsr delaySomewhatAndThenSetTheRtc:24\n");
 			continue;
 		}
+		if (pc == 0x9c40){ // Force middle key
+			printf("0x9c40 force middle key\n");
+			setMemory8(0xF79A, 0x2);
+		}
+		if (pc == 0x0880){ // Skip IR stuff for now
+			pc = 0x082c;
+			printf("0x0880 Skip IR stuff for now\n");
+			continue;
+		}if (pc == 0x08d6){ // Skip IR stuff for now
+			pc = 0xba76;
+			printf("0x0886 Skip IR stuff for now\n");
+			continue;
+		}
 
 		uint16_t* currentInstruction = (uint16_t*)(memory + pc);
 		// IMPROVEMENT: maybe just use pointers to the ROM, left this way cause it seems cleaner
@@ -387,7 +400,7 @@ int main(){
 		uint8_t fL = f & 0xF;
 
 		uint32_t cdef = cd << 16 | ef;
-		if (pc == 0x7978) {
+		if (pc == 0x7996) {
 			int x = 3;
 		}
 		switch(aH){
