@@ -690,7 +690,6 @@ int main(){
 						printf("%04x - STC\n", pc); // Unused in the ROM
 					}break;
 					case 0x3:{ // LDC.B Rs, CCR
-						*RH[1] = 0b10101010;
 						struct RegRef8 Rs = getRegRef8(bL);
 						uint8_t value = *Rs.ptr;
 						setFlags(value);
