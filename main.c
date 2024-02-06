@@ -402,7 +402,7 @@ int main(){
 		uint8_t fL = f & 0xF;
 
 		uint32_t cdef = cd << 16 | ef;
-		if (pc == 0x6966) {
+		if (pc == 0x696c) { // Breakpoint for debugging
 			int x = 3;
 		}
 		switch(aH){
@@ -640,7 +640,6 @@ int main(){
 								};
 							}break;
 							case 0xD:{
-								pc+=2;
 								if (bL == 0x0 && cH == 0x5){
 									switch(cL){ // TODO replace with if, and see if merging it with C & F makes it more readable
 										case 0x1:{ // DIVXS B Rs, Rd
@@ -2502,7 +2501,7 @@ int main(){
 				if((getMemory8(PORT1)) & LCD_DATA_PIN){ // Might need to be high, check later
 					lcd.memory[(lcd.currentPage * 0x100) + lcd.currentColumn*2 + lcd.currentByte] = *SSU.SSTDR;	
 					if (lcd.currentByte == 1){
-						lcd.currentColumn = (lcd.currentColumn + 1) % 255;
+						lcd.currentColumn = (lcd.currentColumn + 1) % 127;
 					}
 					lcd.currentByte = (lcd.currentByte + 1) % 2;
 				}
@@ -2526,7 +2525,8 @@ int main(){
 								case 0x0D:
 								case 0x0E:
 								case 0x0F:{
-									lcd.currentColumn = *SSU.SSTDR;
+									lcd.currentColumn = (*SSU.SSTDR & 0xF) | (lcd.currentColumn & 0xF0); // Set lower column address
+									lcd.currentByte = 0;
 								}break;
 								case 0x10:
 								case 0x11:
@@ -2536,7 +2536,8 @@ int main(){
 								case 0x15:
 								case 0x16:
 								case 0x17:{
-									lcd.currentColumn = ((*SSU.SSTDR & 0b111) << 8) | lcd.currentColumn;
+									lcd.currentColumn = ((*SSU.SSTDR & 0b111) << 4) | (lcd.currentColumn & 0xF); // Set upper column address
+									lcd.currentByte = 0;
 								} break;
 								case 0xB0:
 								case 0xB1:
@@ -2605,8 +2606,8 @@ int main(){
 		}
 
 		if(~(getMemory8(PORT1)) & LCD_DATA_PIN){ 
-			lcd.currentColumn = 0;
-			lcd.currentPage = 0;
+			//lcd.currentColumn = 0;
+			//lcd.currentPage = 0;
 		}
 		pc+=2;
 		if (mode == RUN){
