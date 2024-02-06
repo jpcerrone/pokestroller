@@ -60,6 +60,8 @@ struct Accelerometer_t{
 
 // -- LCD
 #define LCD_PIN 0x1
+#define LCD_DATA_PIN 0x2
+static const int LCD_MEM_SIZE = 128 * 176 * 2;
 enum LCD_STATES{
 	LCD_EMPTY,
 	LCD_READING_CONTRAST,
@@ -67,7 +69,10 @@ enum LCD_STATES{
 struct Lcd_t{
 	bool powerSave;
 	bool displayOn;
+	uint8_t* memory;
 	uint8_t contrast;
 	enum LCD_STATES state;
-
+	uint8_t currentColumn;
+	uint8_t currentPage;
+	uint8_t currentByte;
 };
