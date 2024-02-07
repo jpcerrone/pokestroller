@@ -61,7 +61,10 @@ struct Accelerometer_t{
 // -- LCD
 #define LCD_PIN 0x1
 #define LCD_DATA_PIN 0x2
-static const int LCD_MEM_SIZE = 128 * 176 * 2;
+#define LCD_WIDTH 96
+#define LCD_BYTES_PER_STRIPE 2
+#define LCD_HEIGHT 64
+static const int LCD_MEM_SIZE = LCD_WIDTH * LCD_HEIGHT / 4; // /4 cuz in 2B we get 8px ( 4px per byte)
 enum LCD_STATES{
 	LCD_EMPTY,
 	LCD_READING_CONTRAST,

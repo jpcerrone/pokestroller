@@ -4,12 +4,9 @@
 #include <stdbool.h>
 #include <memory.h>
 #include <string.h>
+#include <stdarg.h>
 
 #include "main.h"
-
-#ifndef PRINT_STATE
-#define printf 
-#endif
 
 enum Mode{
 	STEP,
@@ -108,6 +105,45 @@ void printMemory(uint32_t address, int byteCount){
 #endif
 }
 
+void printInstruction(const char* format, ...){
+#ifdef PRINT_STATE
+	va_list args;
+	va_start(args, format);
+	vprintf(format, args);
+	va_end(args);
+#endif
+}
+
+uint32_t* videoMemory;
+#define GRAY_3 0x00333333
+#define GRAY_2 0x00666666
+#define GRAY_1 0x00999999
+#define GRAY_0 0x00CCCCCC
+const static uint32_t palette[4] = {GRAY_3, GRAY_2, GRAY_1, GRAY_0};
+
+void printLCD(){
+	FILE* lcdFile;
+	fopen_s(&lcdFile, "lcdDump.bin","wb");
+	fwrite(lcd.memory, 1, LCD_MEM_SIZE, lcdFile);
+	for(int y = 0; y < LCD_HEIGHT; y++){
+		for(int x = 0; x < LCD_WIDTH; x++){
+			int yOffsetStripe = y%8;
+			uint8_t firstByteForX = (lcd.memory[2*x + (y/8)*LCD_WIDTH*LCD_BYTES_PER_STRIPE] & (1<<yOffsetStripe)) >> yOffsetStripe;
+			uint8_t secondByteForX = (lcd.memory[2*x + (y/8)*LCD_WIDTH*LCD_BYTES_PER_STRIPE + 1] & (1<<yOffsetStripe)) >> yOffsetStripe;
+			int paletteIdx = firstByteForX + secondByteForX;
+			uint32_t color = palette[paletteIdx];
+			if(color != GRAY_3){
+				printf("*");
+			} else{
+				printf("-");
+			}
+			videoMemory[y*LCD_WIDTH + x] = color;
+		}
+		printf("\n");
+	}
+	fclose(lcdFile);
+
+}
 // With masking here we're ignoring the 0x00XX0000 part of the address for this emulator, as we have one big memory block that goes up to 0xFFFF
 void setMemory8(uint32_t address, uint8_t value){
 	address = address & 0x0000ffff; // Keep lower 16 bits only
@@ -300,6 +336,8 @@ int main(){
 	lcd.memory = malloc(LCD_MEM_SIZE);
 	memset(lcd.memory, 0x44, LCD_MEM_SIZE); // TEST value 0x44
 
+	videoMemory = malloc(LCD_WIDTH * LCD_HEIGHT * 4);
+
 	FILE* romFile = fopen("roms/rom.bin","r");
 	if(!romFile){
 		printf("Can't find rom");
@@ -344,30 +382,30 @@ int main(){
 		// Skip certain instructions
 		if (pc == 0x336){ // Factory Tests
 			pc += 4;
-			printf("SKIP 0336 jsr factoryTestPerformIfNeeded:24\n");
+			printInstruction("SKIP 0336 jsr factoryTestPerformIfNeeded:24\n");
 			continue;
 		} if (pc == 0x350){ // Check battery
 			pc += 4;
-			printf("SKIP 350 jsr checkBatteryForBelowGivenLevel:24\n");
+			printInstruction("SKIP 350 jsr checkBatteryForBelowGivenLevel:24\n");
 			*RL[0] = 0;
 			continue;
 		}
 		if (pc == 0x36e){ // Set RTC
 			pc += 4;
-			printf("SKIP 36E jsr delaySomewhatAndThenSetTheRtc:24\n");
+			printInstruction("SKIP 36E jsr delaySomewhatAndThenSetTheRtc:24\n");
 			continue;
 		}
 		if (pc == 0x9c40){ // Force middle key
-			printf("0x9c40 force middle key\n");
+			printInstruction("0x9c40 force middle key\n");
 			setMemory8(0xF79A, 0x2);
 		}
 		if (pc == 0x0880){ // Skip IR stuff for now
 			pc = 0x082c;
-			printf("0x0880 Skip IR stuff for now\n");
+			printInstruction("0x0880 Skip IR stuff for now\n");
 			continue;
 		}if (pc == 0x08d6){ // Skip IR stuff for now
 			pc = 0xba76;
-			printf("0x0886 Skip IR stuff for now\n");
+			printInstruction("0x0886 Skip IR stuff for now\n");
 			continue;
 		}
 
@@ -403,13 +441,15 @@ int main(){
 
 		uint32_t cdef = cd << 16 | ef;
 		if (pc == 0x696c) { // Breakpoint for debugging
+			printLCD();
 			int x = 3;
+			return 0;
 		}
 		switch(aH){
 			case 0x0:{
 				switch(aL){
 					case 0x0:{
-						printf("%04x - NOP\n", pc);
+						printInstruction("%04x - NOP\n", pc);
 					}break;
 					case 0x1:{
 						switch(bH){ // NOTE. we're ignoring bL here, might not be necesary
@@ -426,7 +466,7 @@ int main(){
 												setFlagsMOV(value, 32);
 												*Rd.ptr = value;
 
-												printf("%04x - MOV.l @%x:16, ER%d\n", pc, address, Rd.idx); 
+												printInstruction("%04x - MOV.l @%x:16, ER%d\n", pc, address, Rd.idx); 
 												printRegistersState();
 
 											}break;
@@ -440,7 +480,7 @@ int main(){
 												setFlagsMOV(value, 32);
 												setMemory32(address, value);
 
-												printf("%04x - MOV.l ER%d,@%x:16 \n", pc, Rs.idx, address); 
+												printInstruction("%04x - MOV.l ER%d,@%x:16 \n", pc, Rs.idx, address); 
 												printMemory(address, 4);
 												printRegistersState();
 
@@ -464,7 +504,7 @@ int main(){
 											setFlagsMOV(value, 32);
 											*Rd.ptr = value;
 
-											printf("%04x - MOV.l @ER%d+, ER%d\n", pc, Rs.idx, Rd.idx); 
+											printInstruction("%04x - MOV.l @ER%d+, ER%d\n", pc, Rs.idx, Rd.idx); 
 
 										} else{
 											struct RegRef32 Rs = getRegRef32(dL);
@@ -476,7 +516,7 @@ int main(){
 											setMemory32(*Rd.ptr, value);
 											setFlagsMOV(value, 32);
 
-											printf("%04x - MOV.l ER%d, @-ER%d, \n", pc, Rs.idx, Rd.idx); 
+											printInstruction("%04x - MOV.l ER%d, @-ER%d, \n", pc, Rs.idx, Rd.idx); 
 											printMemory(*Rd.ptr, 4);
 
 										}
@@ -498,7 +538,7 @@ int main(){
 											*Rd.ptr = value;
 											setFlagsMOV(value, 32);
 
-											printf("%04x - MOV.l @(%d:16, ER%d), ER%d\n", pc, disp, Rs.idx, Rd.idx); 
+											printInstruction("%04x - MOV.l @(%d:16, ER%d), ER%d\n", pc, disp, Rs.idx, Rd.idx); 
 
 										} else{ // To memory  ERs, @(d:16,ERd) 
 											struct RegRef32 Rs = getRegRef32(dL);
@@ -509,7 +549,7 @@ int main(){
 
 
 											setMemory32(*Rd.ptr + signExtendedDisp, value);
-											printf("%04x - MOV.l ER%d,@(%d:16, ER%d)\n", pc, Rs.idx, disp, Rd.idx); 
+											printInstruction("%04x - MOV.l ER%d,@(%d:16, ER%d)\n", pc, Rs.idx, disp, Rd.idx); 
 											printMemory(*Rd.ptr + signExtendedDisp, 4);
 										}
 										printRegistersState();
@@ -525,7 +565,7 @@ int main(){
 											setFlagsMOV(value, 32);
 											*Rd.ptr = value;
 
-											printf("%04x - MOV.l @ER%d, ER%d\n", pc, Rs.idx, Rd.idx ); 
+											printInstruction("%04x - MOV.l @ER%d, ER%d\n", pc, Rs.idx, Rd.idx ); 
 											printRegistersState();
 										} else{ // MOV.l ERs, @ERd 
 											struct RegRef32 Rs = getRegRef32(bL);
@@ -533,7 +573,7 @@ int main(){
 											uint32_t value = *Rs.ptr;
 											setFlagsMOV(value, 32);
 											setMemory32(*Rd.ptr, value);
-											printf("%04x - MOV.l ER%d, @ER%d, \n", pc, Rs.idx, Rd.idx);
+											printInstruction("%04x - MOV.l ER%d, @ER%d, \n", pc, Rs.idx, Rd.idx);
 											printMemory(*Rd.ptr, 4);
 										}
 										pc += 2;
@@ -548,7 +588,7 @@ int main(){
 										setFlagsMOV(newValue, 32);
 										*Rd.ptr = newValue;
 
-										printf("%04x - AND.l R%d, ER%d\n", pc, Rs.idx, Rd.idx ); 
+										printInstruction("%04x - AND.l R%d, ER%d\n", pc, Rs.idx, Rd.idx ); 
 										printRegistersState();
 
 										pc += 2;
@@ -563,7 +603,7 @@ int main(){
 										setFlagsMOV(newValue, 32);
 										*Rd.ptr = newValue;
 
-										printf("%04x - OR.l R%d, ER%d\n", pc, Rs.idx, Rd.idx ); 
+										printInstruction("%04x - OR.l R%d, ER%d\n", pc, Rs.idx, Rd.idx ); 
 										printRegistersState();
 
 										pc += 2;
@@ -578,7 +618,7 @@ int main(){
 										setFlagsMOV(newValue, 32);
 										*Rd.ptr = newValue;
 
-										printf("%04x - XOR.l R%d, ER%d\n", pc, Rs.idx, Rd.idx ); 
+										printInstruction("%04x - XOR.l R%d, ER%d\n", pc, Rs.idx, Rd.idx ); 
 										printRegistersState();
 
 										pc += 2;
@@ -597,16 +637,16 @@ int main(){
 										case 0xF:{
 											uint8_t mostSignificantBit = dH >> 7;
 											if (mostSignificantBit == 0x1){
-												printf("%04x - STC\n", pc);// Unused in the ROM
+												printInstruction("%04x - STC\n", pc);// Unused in the ROM
 											}else{
-												printf("%04x - LDC\n", pc); // Unused in the ROM
+												printInstruction("%04x - LDC\n", pc); // Unused in the ROM
 											}
 										}break;
 									}
 								}
 							}break;
 							case 0x8:{
-								printf("%04x - SLEEP\n", pc); // Not sleeping for now
+								printInstruction("%04x - SLEEP\n", pc); // Not sleeping for now
 							}break;
 							case 0xC:{
 								if (bL == 0x0 && cH == 0x5){
@@ -619,7 +659,7 @@ int main(){
 											flags.Z = (*Rd.ptr == 0) ? 1 : 0;
 											flags.N = (*Rd.ptr & 0x8000) ? 1 : 0;
 
-											printf("%04x - MULXS B r%d%c, %c%d\n", pc, Rs.idx, Rs.loOrHiReg, Rd.loOrHiReg, Rd.idx);
+											printInstruction("%04x - MULXS B r%d%c, %c%d\n", pc, Rs.idx, Rs.loOrHiReg, Rd.loOrHiReg, Rd.idx);
 											printRegistersState();
 											pc += 2;
 										} break;
@@ -632,7 +672,7 @@ int main(){
 											flags.Z = (*Rd.ptr == 0) ? 1 : 0;
 											flags.N = (*Rd.ptr & 0x80000000) ? 1 : 0;
 
-											printf("%04x - MULXS W %c%d, er%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.idx);
+											printInstruction("%04x - MULXS W %c%d, er%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.idx);
 											printRegistersState();
 											pc += 2;
 										}break;
@@ -652,7 +692,7 @@ int main(){
 											flags.Z = (*Rs.ptr == 0) ? 1 : 0;
 											flags.N = (((int16_t)quotient) > 0) ? 0 : 1;
 
-											printf("%04x - DIVXS B r%d%c, %c%d\n", pc, Rs.idx, Rs.loOrHiReg, Rd.loOrHiReg, Rd.idx);
+											printInstruction("%04x - DIVXS B r%d%c, %c%d\n", pc, Rs.idx, Rs.loOrHiReg, Rd.loOrHiReg, Rd.idx);
 											printRegistersState();
 											pc += 2;
 										} break;
@@ -666,7 +706,7 @@ int main(){
 											flags.Z = (*Rs.ptr == 0) ? 1 : 0;
 											flags.N = (quotient & 0x80000000) ? 1 : 0;
 
-											printf("%04x - DIVXU W %c%d, er%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.idx);
+											printInstruction("%04x - DIVXU W %c%d, er%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.idx);
 											printRegistersState();
 											pc += 2;
 										}break;
@@ -678,15 +718,15 @@ int main(){
 								if (bL == 0x0 && cH == 0x6){
 									switch(cL){ // TODO replace with if, and see if merging it with C & F makes it more readable
 										case 0x4:{
-											printf("%04x - OR\n", pc);
+											printInstruction("%04x - OR\n", pc);
 											return 1; // UNIMPLEMENTED
 										}break;
 										case 0x5:{
-											printf("%04x - XOR\n", pc);
+											printInstruction("%04x - XOR\n", pc);
 											return 1; // UNIMPLEMENTED
 										}break;
 										case 0x6:{
-											printf("%04x - AND\n", pc);
+											printInstruction("%04x - AND\n", pc);
 											return 1; // UNIMPLEMENTED
 										}break;
 									}
@@ -694,38 +734,38 @@ int main(){
 							}break;
 
 							default:{
-								printf("???\n");
+								printInstruction("???\n");
 								return 1; // UNIMPLEMENTED
 							}break;
 
 						}
 					}break;
 					case 0x2:{
-						printf("%04x - STC\n", pc); // Unused in the ROM
+						printInstruction("%04x - STC\n", pc); // Unused in the ROM
 					}break;
 					case 0x3:{ // LDC.B Rs, CCR
 						struct RegRef8 Rs = getRegRef8(bL);
 						uint8_t value = *Rs.ptr;
 						setFlags(value);
-						printf("%04x - LDC.B r%d%c, CCR\n", pc, Rs.idx, Rs.loOrHiReg);
+						printInstruction("%04x - LDC.B r%d%c, CCR\n", pc, Rs.idx, Rs.loOrHiReg);
 						printRegistersState();
 					}break;
 					case 0x4:{
-						printf("%04x - ORC\n", pc);
+						printInstruction("%04x - ORC\n", pc);
 						return 1; // UNIMPLEMENTED
 					}break;
 					case 0x5:{
-						printf("%04x - XORC\n", pc);
+						printInstruction("%04x - XORC\n", pc);
 						return 1; // UNIMPLEMENTED
 					}break;
 					case 0x6:{
-						printf("%04x - ANDC\n", pc);
+						printInstruction("%04x - ANDC\n", pc);
 						return 1; // UNIMPLEMENTED
 					}break;
 					case 0x7:{ // LDC.B #xx:8, CCR
 						uint8_t value = b;
 						setFlags(value);
-						printf("%04x - LDC.B #%x:8, CCR\n", pc, value);
+						printInstruction("%04x - LDC.B #%x:8, CCR\n", pc, value);
 						printRegistersState();
 					}break;
 					case 0x8:{ // ADD.B Rs, Rd
@@ -735,7 +775,7 @@ int main(){
 						setFlagsADD(*Rd.ptr, *Rs.ptr, 8);
 						*Rd.ptr += *Rs.ptr;
 
-						printf("%04x - ADD.b R%d%c,R%d%c\n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx, Rd.loOrHiReg); 
+						printInstruction("%04x - ADD.b R%d%c,R%d%c\n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx, Rd.loOrHiReg); 
 						printRegistersState();
 					}break;
 					case 0x9:{ // ADD.W Rs, Rd
@@ -745,7 +785,7 @@ int main(){
 						setFlagsADD(*Rd.ptr, *Rs.ptr, 16);
 
 						*Rd.ptr += *Rs.ptr;
-						printf("%04x - ADD.w %c%d,%c%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.loOrHiReg,  Rd.idx); 
+						printInstruction("%04x - ADD.w %c%d,%c%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.loOrHiReg,  Rd.idx); 
 						printRegistersState();
 
 					}break;
@@ -755,7 +795,7 @@ int main(){
 								struct RegRef8 Rd = getRegRef8(bL);
 								setFlagsINC(*Rd.ptr, 1, 8);
 								*Rd.ptr += 1;
-								printf("%04x - INC.b r%d%c\n", pc, Rd.idx, Rd.loOrHiReg);
+								printInstruction("%04x - INC.b r%d%c\n", pc, Rd.idx, Rd.loOrHiReg);
 								printRegistersState();
 							}break;
 							case 0x8:
@@ -772,7 +812,7 @@ int main(){
 								setFlagsADD(*Rd.ptr, *Rs.ptr, 32);
 
 								*Rd.ptr += *Rs.ptr;
-								printf("%04x - ADD.l ER%d, ER%d\n", pc, Rs.idx,  Rd.idx); 
+								printInstruction("%04x - ADD.l ER%d, ER%d\n", pc, Rs.idx,  Rd.idx); 
 								printRegistersState();
 							}break;
 
@@ -783,41 +823,41 @@ int main(){
 							case 0x0:{ // ADDS.l #1, ERd
 								struct RegRef32 Rd = getRegRef32(bL);
 								*Rd.ptr += 1;
-								printf("%04x - ADDS.l #1, ER%d\n", pc, Rd.idx);
+								printInstruction("%04x - ADDS.l #1, ER%d\n", pc, Rd.idx);
 							}break;
 							case 0x8:{ // ADDS.l #2, ERd
 								struct RegRef32 Rd = getRegRef32(bL);
 								*Rd.ptr += 2;
-								printf("%04x - ADDS.l #2, ER%d\n", pc, Rd.idx);
+								printInstruction("%04x - ADDS.l #2, ER%d\n", pc, Rd.idx);
 							}break;
 							case 0x9:{ // ADDS.l #4, ERd
 								struct RegRef32 Rd = getRegRef32(bL);
 								*Rd.ptr += 4;
-								printf("%04x - ADDS.l #4, ER%d\n", pc, Rd.idx);
+								printInstruction("%04x - ADDS.l #4, ER%d\n", pc, Rd.idx);
 							}break;
 							case 0x5:{ // INC.w #1, Rd
 								struct RegRef16 Rd = getRegRef16(bL);
 								setFlagsINC(*Rd.ptr, 1, 16); 
 								*Rd.ptr += 1;
-								printf("%04x - INC.w #1, %c%d\n", pc, Rd.loOrHiReg, Rd.idx);
+								printInstruction("%04x - INC.w #1, %c%d\n", pc, Rd.loOrHiReg, Rd.idx);
 							}break;
 							case 0x7:{ // INC.l #1, ERd
 								struct RegRef32 Rd = getRegRef32(bL);
 								setFlagsINC(*Rd.ptr, 1, 32);
 								*Rd.ptr += 1;
-								printf("%04x - INC.l #1, ER%d\n", pc, Rd.idx);
+								printInstruction("%04x - INC.l #1, ER%d\n", pc, Rd.idx);
 							} break;
 							case 0xD:{ // INC.w #2, Rd
 								struct RegRef16 Rd = getRegRef16(bL);
 								setFlagsINC(*Rd.ptr, 2, 16);
 								*Rd.ptr += 2;
-								printf("%04x - INC.w #2, %c%d\n", pc, Rd.loOrHiReg, Rd.idx);
+								printInstruction("%04x - INC.w #2, %c%d\n", pc, Rd.loOrHiReg, Rd.idx);
 							}break;
 							case 0xF:{ // INC.l #2, ERd
 								struct RegRef32 Rd = getRegRef32(bL);
 								setFlagsINC(*Rd.ptr, 2, 32);
 								*Rd.ptr += 2;
-								printf("%04x - INC.l #2, ER%d\n", pc, Rd.idx);
+								printInstruction("%04x - INC.l #2, ER%d\n", pc, Rd.idx);
 							}break;
 						}
 						printRegistersState();
@@ -829,7 +869,7 @@ int main(){
 						setFlagsMOV(*Rs.ptr, 8);
 						*Rd.ptr = *Rs.ptr;
 
-						printf("%04x - MOV.b R%d%c,R%d%c\n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx, Rd.loOrHiReg); 
+						printInstruction("%04x - MOV.b R%d%c,R%d%c\n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx, Rd.loOrHiReg); 
 						printRegistersState();
 
 					}break;
@@ -840,18 +880,18 @@ int main(){
 						setFlagsMOV(*Rs.ptr, 16);
 
 						*Rd.ptr = *Rs.ptr;
-						printf("%04x - MOV.w %c%d,%c%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.loOrHiReg,  Rd.idx); 
+						printInstruction("%04x - MOV.w %c%d,%c%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.loOrHiReg,  Rd.idx); 
 						printRegistersState();
 
 					}break;
 					case 0xE:{
-						printf("%04x - ADDX\n", pc);
+						printInstruction("%04x - ADDX\n", pc);
 						return 1; // UNIMPLEMENTED
 					}break;
 					case 0xF:{
 						switch(bH){
 							case 0x0:{
-								printf("%04x - DAA\n", pc);
+								printInstruction("%04x - DAA\n", pc);
 								return 1; // UNIMPLEMENTED
 							}break;
 							case 0x8:
@@ -868,7 +908,7 @@ int main(){
 								setFlagsMOV(*Rs.ptr, 32);
 
 								*Rd.ptr = *Rs.ptr;
-								printf("%04x - MOV.l ER%d, ER%d\n", pc, Rs.idx,  Rd.idx); 
+								printInstruction("%04x - MOV.l ER%d, ER%d\n", pc, Rs.idx,  Rd.idx); 
 								printRegistersState();
 							}break;
 						}
@@ -885,21 +925,21 @@ int main(){
 								flags.C = *Rd.ptr & 0x80;
 								*Rd.ptr = (*Rd.ptr << 1);
 								setFlagsMOV(*Rd.ptr, 8);
-								printf("%04x - SHLL.b r%d%c\n", pc, Rd.idx, Rd.loOrHiReg);
+								printInstruction("%04x - SHLL.b r%d%c\n", pc, Rd.idx, Rd.loOrHiReg);
 							}break;
 							case 0x1:{ // SHLL.w Rd
 								struct RegRef16 Rd = getRegRef16(bL);
 								flags.C = *Rd.ptr & 0x8000;
 								*Rd.ptr = (*Rd.ptr << 1);
 								setFlagsMOV(*Rd.ptr, 16);
-								printf("%04x - SHLL.w %c%d\n", pc, Rd.loOrHiReg, Rd.idx);
+								printInstruction("%04x - SHLL.w %c%d\n", pc, Rd.loOrHiReg, Rd.idx);
 							} break;
 							case 0x3:{ // SHLL.l Rd
 								struct RegRef32 Rd = getRegRef32(bL);
 								flags.C = *Rd.ptr & 0x80000000;
 								*Rd.ptr = (*Rd.ptr << 1);
 								setFlagsMOV(*Rd.ptr, 32);
-								printf("%04x - SHLL.l er%d\n", pc, Rd.idx);
+								printInstruction("%04x - SHLL.l er%d\n", pc, Rd.idx);
 							}break;
 							case 0x8:{ // SHAL.b Rd -- These differ in their treatment of the V flag
 								struct RegRef8 Rd = getRegRef8(bL);
@@ -907,7 +947,7 @@ int main(){
 								*Rd.ptr = (*Rd.ptr << 1);
 								setFlagsMOV(*Rd.ptr, 8);
 								flags.V = flags.C && !(*Rd.ptr & 0x80);
-								printf("%04x - SHAL.b r%d%c\n", pc, Rd.idx, Rd.loOrHiReg);
+								printInstruction("%04x - SHAL.b r%d%c\n", pc, Rd.idx, Rd.loOrHiReg);
 							}break;
 							case 0x9:{ // SHAL.w Rd
 								struct RegRef16 Rd = getRegRef16(bL);
@@ -915,7 +955,7 @@ int main(){
 								*Rd.ptr = (*Rd.ptr << 1);
 								setFlagsMOV(*Rd.ptr, 16);
 								flags.V = flags.C && !(*Rd.ptr & 0x8000);
-								printf("%04x - SHAL.w %c%d\n", pc, Rd.loOrHiReg, Rd.idx);
+								printInstruction("%04x - SHAL.w %c%d\n", pc, Rd.loOrHiReg, Rd.idx);
 							}break;
 							case 0xB:{ // SHAL.l Rd
 								struct RegRef32 Rd = getRegRef32(bL);
@@ -923,7 +963,7 @@ int main(){
 								*Rd.ptr = (*Rd.ptr << 1);
 								setFlagsMOV(*Rd.ptr, 32);
 								flags.V = flags.C && !(*Rd.ptr & 0x80000000);
-								printf("%04x - SHAL.l er%d\n", pc, Rd.idx);
+								printInstruction("%04x - SHAL.l er%d\n", pc, Rd.idx);
 							}break;
 						}
 						printRegistersState();
@@ -935,21 +975,21 @@ int main(){
 								flags.C = *Rd.ptr & 0x1;
 								*Rd.ptr = (*Rd.ptr >> 1);
 								setFlagsMOV(*Rd.ptr, 8);
-								printf("%04x - SHLR.b r%d%c\n", pc, Rd.idx, Rd.loOrHiReg);
+								printInstruction("%04x - SHLR.b r%d%c\n", pc, Rd.idx, Rd.loOrHiReg);
 							}break;
 							case 0x1:{ // SHLR.w Rd
 								struct RegRef16 Rd = getRegRef16(bL);
 								flags.C = *Rd.ptr & 0x1;
 								*Rd.ptr = (*Rd.ptr >> 1);
 								setFlagsMOV(*Rd.ptr, 16);
-								printf("%04x - SHLR.w %c%d\n", pc, Rd.loOrHiReg, Rd.idx);
+								printInstruction("%04x - SHLR.w %c%d\n", pc, Rd.loOrHiReg, Rd.idx);
 							} break;
 							case 0x3:{ // SHLR.l Rd
 								struct RegRef32 Rd = getRegRef32(bL);
 								flags.C = *Rd.ptr & 0x1;
 								*Rd.ptr = (*Rd.ptr >> 1);
 								setFlagsMOV(*Rd.ptr, 32);
-								printf("%04x - SHLR.l er%d\n", pc, Rd.idx);
+								printInstruction("%04x - SHLR.l er%d\n", pc, Rd.idx);
 							}break;
 							case 0x8:{ // SHAR.b Rd - Unused in the ROM
 								return 1;
@@ -959,14 +999,14 @@ int main(){
 								flags.C = *Rd.ptr & 0x1;
 								*Rd.ptr = (*Rd.ptr >> 1) | (*Rd.ptr & 0x8000);
 								setFlagsMOV(*Rd.ptr, 16);
-								printf("%04x - SHAR.w %c%d\n", pc, Rd.loOrHiReg, Rd.idx);
+								printInstruction("%04x - SHAR.w %c%d\n", pc, Rd.loOrHiReg, Rd.idx);
 							}break;
 							case 0xB:{ // SHAR.l Rd
 								struct RegRef32 Rd = getRegRef32(bL);
 								flags.C = *Rd.ptr & 0x1;
 								*Rd.ptr = (*Rd.ptr >> 1) | (*Rd.ptr & 0x80000000);
 								setFlagsMOV(*Rd.ptr, 32);
-								printf("%04x - SHAR.l er%d\n", pc, Rd.idx);
+								printInstruction("%04x - SHAR.l er%d\n", pc, Rd.idx);
 							}break;
 						}
 						printRegistersState();
@@ -979,7 +1019,7 @@ int main(){
 								flags.C = *Rd.ptr & 0x80;
 								*Rd.ptr = (*Rd.ptr << 1) | oldCarry;
 								setFlagsMOV(*Rd.ptr, 8);
-								printf("%04x - ROTXL.b r%d%c\n", pc, Rd.idx, Rd.loOrHiReg);
+								printInstruction("%04x - ROTXL.b r%d%c\n", pc, Rd.idx, Rd.loOrHiReg);
 							} break;
 							case 0x1:{ // ROTXL.w Rd
 								struct RegRef16 Rd = getRegRef16(bL);
@@ -987,7 +1027,7 @@ int main(){
 								flags.C = *Rd.ptr & 0x8000;
 								*Rd.ptr = (*Rd.ptr << 1) | oldCarry;
 								setFlagsMOV(*Rd.ptr, 16);
-								printf("%04x - ROTXL.w %c%d\n", pc, Rd.loOrHiReg, Rd.idx);
+								printInstruction("%04x - ROTXL.w %c%d\n", pc, Rd.loOrHiReg, Rd.idx);
 							} break;
 							case 0x3:{ // ROTXL.l Rd
 								struct RegRef32 Rd = getRegRef32(bL);
@@ -995,28 +1035,28 @@ int main(){
 								flags.C = *Rd.ptr & 0x80000000;
 								*Rd.ptr = (*Rd.ptr << 1) | oldCarry;
 								setFlagsMOV(*Rd.ptr, 32);
-								printf("%04x - ROTXL.l er%d\n", pc, Rd.idx);
+								printInstruction("%04x - ROTXL.l er%d\n", pc, Rd.idx);
 							}break;
 							case 0x8:{ // ROTL.b Rd
 								struct RegRef8 Rd = getRegRef8(bL);
 								flags.C = *Rd.ptr & 0x80;
 								*Rd.ptr = (*Rd.ptr << 1) | flags.C;
 								setFlagsMOV(*Rd.ptr, 8);
-								printf("%04x - ROTL.b r%d%c\n", pc, Rd.idx, Rd.loOrHiReg);
+								printInstruction("%04x - ROTL.b r%d%c\n", pc, Rd.idx, Rd.loOrHiReg);
 							} break;
 							case 0x9:{ // ROTL.w Rd
 								struct RegRef16 Rd = getRegRef16(bL);
 								flags.C = *Rd.ptr & 0x8000;
 								*Rd.ptr = (*Rd.ptr << 1) | flags.C;
 								setFlagsMOV(*Rd.ptr, 16);
-								printf("%04x - ROTL.w %c%d\n", pc, Rd.loOrHiReg, Rd.idx);
+								printInstruction("%04x - ROTL.w %c%d\n", pc, Rd.loOrHiReg, Rd.idx);
 							} break;
 							case 0xB:{ // ROTL.l Rd
 								struct RegRef32 Rd = getRegRef32(bL);
 								flags.C = *Rd.ptr & 0x80000000;
 								*Rd.ptr = (*Rd.ptr << 1) | flags.C;
 								setFlagsMOV(*Rd.ptr, 32);
-								printf("%04x - ROTL.l er%d\n", pc, Rd.idx);
+								printInstruction("%04x - ROTL.l er%d\n", pc, Rd.idx);
 							}break;
 						}
 						printRegistersState();
@@ -1033,7 +1073,7 @@ int main(){
 						setFlagsMOV(newValue, 8);
 						*Rd.ptr = newValue;
 
-						printf("%04x - OR.b R%d%c,R%d%c\n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx, Rd.loOrHiReg); 
+						printInstruction("%04x - OR.b R%d%c,R%d%c\n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx, Rd.loOrHiReg); 
 						printRegistersState();
 					}break;
 					case 0x5:{ // XOR.B Rs, Rd
@@ -1045,7 +1085,7 @@ int main(){
 						setFlagsMOV(newValue, 8);
 						*Rd.ptr = newValue;
 
-						printf("%04x - XOR.b R%d%c,R%d%c\n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx, Rd.loOrHiReg); 
+						printInstruction("%04x - XOR.b R%d%c,R%d%c\n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx, Rd.loOrHiReg); 
 						printRegistersState();
 					}break;
 					case 0x6:{ // AND.B Rs, Rd
@@ -1057,7 +1097,7 @@ int main(){
 						setFlagsMOV(newValue, 8);
 						*Rd.ptr = newValue;
 
-						printf("%04x - AND.b R%d%c,R%d%c\n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx, Rd.loOrHiReg); 
+						printInstruction("%04x - AND.b R%d%c,R%d%c\n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx, Rd.loOrHiReg); 
 						printRegistersState();
 					}break;
 					case 0x7:{
@@ -1065,27 +1105,27 @@ int main(){
 							case 0x0:
 							case 0x1:
 							case 0x3:{
-								printf("%04x - NOT\n", pc);
+								printInstruction("%04x - NOT\n", pc);
 								return 1; // UNIMPLEMENTED
 							}break;
 							case 0x5:{ // EXTU.w Rd
 								struct RegRef16 Rd = getRegRef16(bL);
 								*Rd.ptr = *Rd.ptr & 0x00FF;
 								setFlagsMOV(*Rd.ptr, 16);
-								printf("%04x - EXTU.w %c%d\n", pc, Rd.loOrHiReg, Rd.idx);
+								printInstruction("%04x - EXTU.w %c%d\n", pc, Rd.loOrHiReg, Rd.idx);
 								printRegistersState();
 							} break;
 							case 0x7:{ // EXTU.l Rd
 								struct RegRef32 Rd = getRegRef32(bL);
 								*Rd.ptr = *Rd.ptr & 0x0000FFFF;
 								setFlagsMOV(*Rd.ptr, 32);
-								printf("%04x - EXTU.l er%d\n", pc, Rd.idx);
+								printInstruction("%04x - EXTU.l er%d\n", pc, Rd.idx);
 								printRegistersState();
 							}break;
 							case 0x8:
 							case 0x9:
 							case 0xB:{
-								printf("%04x - NEG\n", pc);
+								printInstruction("%04x - NEG\n", pc);
 								return 1; // UNIMPLEMENTED
 							}break;
 							case 0xD:{ // EXTS.w Rd
@@ -1097,7 +1137,7 @@ int main(){
 									*Rd.ptr = (*Rd.ptr & 0x00FF) | 0xFF00;
 								}
 								setFlagsMOV(*Rd.ptr, 16);
-								printf("%04x - EXTS.w %c%d\n", pc, Rd.loOrHiReg, Rd.idx);
+								printInstruction("%04x - EXTS.w %c%d\n", pc, Rd.loOrHiReg, Rd.idx);
 								printRegistersState();
 							} break;
 							case 0xF:{ // EXTS.l Rd
@@ -1109,7 +1149,7 @@ int main(){
 									*Rd.ptr = (*Rd.ptr & 0x0000FFFF) | 0xFFFF0000;
 								}
 								setFlagsMOV(*Rd.ptr, 32);
-								printf("%04x - EXTS.l er%d\n", pc, Rd.idx);
+								printInstruction("%04x - EXTS.l er%d\n", pc, Rd.idx);
 								printRegistersState();
 							}break;
 
@@ -1122,7 +1162,7 @@ int main(){
 						setFlagsSUB(*Rd.ptr, *Rs.ptr, 8);
 						*Rd.ptr -= *Rs.ptr;
 
-						printf("%04x - SUB.b R%d%c,R%d%c\n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx, Rd.loOrHiReg); 
+						printInstruction("%04x - SUB.b R%d%c,R%d%c\n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx, Rd.loOrHiReg); 
 						printRegistersState();
 
 					}break;
@@ -1134,7 +1174,7 @@ int main(){
 						setFlagsSUB(*Rd.ptr, *Rs.ptr, 16);
 
 						*Rd.ptr -= *Rs.ptr;
-						printf("%04x - SUB.w %c%d,%c%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.loOrHiReg,  Rd.idx); 
+						printInstruction("%04x - SUB.w %c%d,%c%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.loOrHiReg,  Rd.idx); 
 						printRegistersState();
 
 					}break;
@@ -1144,7 +1184,7 @@ int main(){
 								struct RegRef8 Rd = getRegRef8(bL);
 								setFlagsINC(*Rd.ptr, -1, 8);
 								*Rd.ptr -= 1;
-								printf("%04x - DEC.b r%d%c\n", pc, Rd.idx, Rd.loOrHiReg);
+								printInstruction("%04x - DEC.b r%d%c\n", pc, Rd.idx, Rd.loOrHiReg);
 								printRegistersState();
 							}break;
 							case 0x8:
@@ -1161,7 +1201,7 @@ int main(){
 								setFlagsSUB(*Rd.ptr, *Rs.ptr, 32);
 
 								*Rd.ptr -= *Rs.ptr;
-								printf("%04x - SUB.l ER%d, ER%d\n", pc, Rs.idx,  Rd.idx); 
+								printInstruction("%04x - SUB.l ER%d, ER%d\n", pc, Rs.idx,  Rd.idx); 
 								printRegistersState();
 							}break;
 
@@ -1173,49 +1213,49 @@ int main(){
 								struct RegRef32 Rd = getRegRef32(bL);
 
 								*Rd.ptr -= 1;
-								printf("%04x - SUBS #1, ER%d\n", pc, Rd.idx); 
+								printInstruction("%04x - SUBS #1, ER%d\n", pc, Rd.idx); 
 								printRegistersState();
 							}break;
 							case 0x8:{ // SUBS #2, ERd
 								struct RegRef32 Rd = getRegRef32(bL);
 
 								*Rd.ptr -= 2;
-								printf("%04x - SUBS #2, ER%d\n", pc, Rd.idx); 
+								printInstruction("%04x - SUBS #2, ER%d\n", pc, Rd.idx); 
 								printRegistersState();
 							}break;
 							case 0x9:{ // SUBS #4, ERd
 								struct RegRef32 Rd = getRegRef32(bL);
 
 								*Rd.ptr -= 4;
-								printf("%04x - SUBS #4, ER%d\n", pc, Rd.idx); 
+								printInstruction("%04x - SUBS #4, ER%d\n", pc, Rd.idx); 
 								printRegistersState();
 							}break;
 							case 0x5:{ // DEC.w #1, Rd
 								struct RegRef16 Rd = getRegRef16(bL);
 								setFlagsINC(*Rd.ptr, -1, 16);
 								*Rd.ptr -= 1;
-								printf("%04x - DEC.w #1, %c%d\n", pc, Rd.loOrHiReg, Rd.idx);
+								printInstruction("%04x - DEC.w #1, %c%d\n", pc, Rd.loOrHiReg, Rd.idx);
 								printRegistersState();
 							}break;
 							case 0x7:{ // DEC.l #1, ERd
 								struct RegRef32 Rd = getRegRef32(bL);
 								setFlagsINC(*Rd.ptr, -1, 32);
 								*Rd.ptr -= 1;
-								printf("%04x - DEC.l #1, ER%d\n", pc, Rd.idx);
+								printInstruction("%04x - DEC.l #1, ER%d\n", pc, Rd.idx);
 								printRegistersState();
 							}break;
 							case 0xD:{ // DEC.w #2, Rd
 								struct RegRef16 Rd = getRegRef16(bL);
 								setFlagsINC(*Rd.ptr, -2, 16);
 								*Rd.ptr -= 2;
-								printf("%04x - DEC.w #2, %c%d\n", pc, Rd.loOrHiReg, Rd.idx);
+								printInstruction("%04x - DEC.w #2, %c%d\n", pc, Rd.loOrHiReg, Rd.idx);
 								printRegistersState();
 							}break;
 							case 0xF:{ // DEC.l #2, ERd
 								struct RegRef32 Rd = getRegRef32(bL);
 								setFlagsINC(*Rd.ptr, -2, 32);
 								*Rd.ptr -= 2;
-								printf("%04x - DEC.l #2, ER%d\n", pc, Rd.idx);
+								printInstruction("%04x - DEC.l #2, ER%d\n", pc, Rd.idx);
 								printRegistersState();
 							}break;
 						}
@@ -1226,7 +1266,7 @@ int main(){
 
 						setFlagsSUB(*Rd.ptr, *Rs.ptr, 8);
 
-						printf("%04x - SUB.b R%d%c,R%d%c\n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx, Rd.loOrHiReg); 
+						printInstruction("%04x - SUB.b R%d%c,R%d%c\n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx, Rd.loOrHiReg); 
 						printRegistersState();
 
 					}break;
@@ -1235,17 +1275,17 @@ int main(){
 						struct RegRef16 Rd = getRegRef16(bL);
 						setFlagsSUB(*Rd.ptr, *Rs.ptr, 16);
 
-						printf("%04x - CMP.w %c%d,%c%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.loOrHiReg,  Rd.idx); 
+						printInstruction("%04x - CMP.w %c%d,%c%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.loOrHiReg,  Rd.idx); 
 						printRegistersState();
 					}break;
 					case 0xE:{
-						printf("%04x - SUBX\n", pc);
+						printInstruction("%04x - SUBX\n", pc);
 						return 1; // UNIMPLEMENTED
 					}break;
 					case 0xF:{
 						switch(bH){
 							case 0x0:{
-								printf("%04x - DAS\n", pc);
+								printInstruction("%04x - DAS\n", pc);
 								return 1; // UNIMPLEMENTED
 							}break;
 							case 0x8:
@@ -1261,7 +1301,7 @@ int main(){
 
 								setFlagsSUB(*Rd.ptr, *Rs.ptr, 32);
 
-								printf("%04x - CMP.l ER%d, ER%d\n", pc, Rs.idx,  Rd.idx); 
+								printInstruction("%04x - CMP.l ER%d, ER%d\n", pc, Rs.idx,  Rd.idx); 
 								printRegistersState();
 							}break;
 						}
@@ -1277,7 +1317,7 @@ int main(){
 				setFlagsMOV(value, 8);
 				*Rd.ptr = value;
 
-				printf("%04x - MOV.b @%x:8, R%d%c\n", pc, address, Rd.idx, Rd.loOrHiReg); 
+				printInstruction("%04x - MOV.b @%x:8, R%d%c\n", pc, address, Rd.idx, Rd.loOrHiReg); 
 				printRegistersState();
 
 
@@ -1290,7 +1330,7 @@ int main(){
 				setFlagsMOV(value, 8);
 				setMemory8(address, value);
 
-				printf("%04x - MOV.b R%d%c,@%x:8 \n", pc, Rs.idx, Rs.loOrHiReg, address); 
+				printInstruction("%04x - MOV.b R%d%c,@%x:8 \n", pc, Rs.idx, Rs.loOrHiReg, address); 
 				printMemory(address, 1);
 				printRegistersState();
 
@@ -1302,95 +1342,95 @@ int main(){
 
 				switch(aL){
 					case 0x0:{ // BRA d:8
-						printf("%04x - BRA %d:8\n", pc, disp);
+						printInstruction("%04x - BRA %d:8\n", pc, disp);
 						pc += disp; 
 					}break;
 					case 0x1:{ // Unused in the ROM
-						printf("%04x - BRN %d:8\n", pc, disp);
+						printInstruction("%04x - BRN %d:8\n", pc, disp);
 						return 1; // UNIMPLEMENTED
 					}break;
 					case 0x2:{
-						printf("%04x - BHI %d:8\n", pc, disp);
+						printInstruction("%04x - BHI %d:8\n", pc, disp);
 						if(!(flags.C | flags.Z)){
 							pc += disp;
 						}
 					}break;
 					case 0x3:{
-						printf("%04x - BLS %d:8\n", pc, disp);
+						printInstruction("%04x - BLS %d:8\n", pc, disp);
 						if((flags.C | flags.Z)){
 							pc += disp;
 						}
 					}break;
 					case 0x4:{
-						printf("%04x - BCC %d:8\n", pc, disp);
+						printInstruction("%04x - BCC %d:8\n", pc, disp);
 						if(!(flags.C)){
 							pc += disp;
 						}
 					}break;
 					case 0x5:{
-						printf("%04x - BCS %d:8\n", pc, disp);
+						printInstruction("%04x - BCS %d:8\n", pc, disp);
 						if(flags.C){
 							pc += disp;
 						}
 					}break;
 					case 0x6:{
-						printf("%04x - BNE %d:8\n", pc, disp);
+						printInstruction("%04x - BNE %d:8\n", pc, disp);
 						if(!(flags.Z)){
 							pc += disp;
 						}
 					}break;
 					case 0x7:{
-						printf("%04x - BEQ %d:8\n", pc, disp);
+						printInstruction("%04x - BEQ %d:8\n", pc, disp);
 						if(flags.Z){
 							pc += disp;
 						}
 					}break;
 					case 0x8:{
-						printf("%04x - BVC %d:8\n", pc, disp);
+						printInstruction("%04x - BVC %d:8\n", pc, disp);
 						if(!(flags.V)){
 							pc += disp;
 						}
 					}break;
 					case 0x9:{
-						printf("%04x - BVS %d:8\n", pc, disp);
+						printInstruction("%04x - BVS %d:8\n", pc, disp);
 						if(flags.V){
 							pc += disp;
 						}
 					}break;
 					case 0xA:{
-						printf("%04x - BPL %d:8\n", pc, disp);
+						printInstruction("%04x - BPL %d:8\n", pc, disp);
 						if(!(flags.N)){
 							pc += disp;
 						}
 					}break;
 					case 0xB:{
-						printf("%04x - BMI %d:8\n", pc, disp);
+						printInstruction("%04x - BMI %d:8\n", pc, disp);
 						if(flags.N){
 							pc += disp;
 						}
 					}break;
 					case 0xC:{
-						printf("%04x - BGE %d:8\n", pc, disp);
+						printInstruction("%04x - BGE %d:8\n", pc, disp);
 						if(!(flags.N ^ flags.V)){
 							pc += disp;
 						}
 					}break;
 					case 0xD:{
-						printf("%04x - BLT %d:8\n", pc, disp);
+						printInstruction("%04x - BLT %d:8\n", pc, disp);
 						if((flags.N ^ flags.V)){
 							pc += disp;
 						}
 
 					}break;
 					case 0xE:{
-						printf("%04x - BGT %d:8\n", pc, disp);
+						printInstruction("%04x - BGT %d:8\n", pc, disp);
 						if(!(flags.Z | (flags.N ^ flags.V))){
 							pc += disp;
 						}
 
 					}break;
 					case 0xF:{
-						printf("%04x - BLE %d:8\n", pc, disp);
+						printInstruction("%04x - BLE %d:8\n", pc, disp);
 						if(flags.Z | (flags.N ^ flags.V)){
 							pc += disp;
 						}
@@ -1404,7 +1444,7 @@ int main(){
 						struct RegRef16 Rd = getRegRef16(bL);
 						uint8_t lowerBitsRd = *Rd.ptr & 0x00FF;
 						*Rd.ptr = *Rs.ptr * lowerBitsRd;
-						printf("%04x - MULXU B r%d%c, %c%d\n", pc, Rs.idx, Rs.loOrHiReg, Rd.loOrHiReg, Rd.idx);
+						printInstruction("%04x - MULXU B r%d%c, %c%d\n", pc, Rs.idx, Rs.loOrHiReg, Rd.loOrHiReg, Rd.idx);
 						printRegistersState();
 					} break;
 					case 0x2:{// MULXU W Rs, Rd
@@ -1413,7 +1453,7 @@ int main(){
 						uint16_t lowerBitsRd = *Rd.ptr & 0x0000FFFF;
 						*Rd.ptr = *Rs.ptr * lowerBitsRd;
 
-						printf("%04x - MULXU W %c%d, er%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.idx);
+						printInstruction("%04x - MULXU W %c%d, er%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.idx);
 						printRegistersState();
 					}break;
 					case 0x1:{ // DIVXU B Rs, Rd
@@ -1426,7 +1466,7 @@ int main(){
 						flags.Z = (*Rs.ptr == 0) ? 1 : 0;
 						flags.N = (*Rs.ptr & 0x8000) ? 1 : 0;
 
-						printf("%04x - DIVXU B r%d%c, %c%d\n", pc, Rs.idx, Rs.loOrHiReg, Rd.loOrHiReg, Rd.idx);
+						printInstruction("%04x - DIVXU B r%d%c, %c%d\n", pc, Rs.idx, Rs.loOrHiReg, Rd.loOrHiReg, Rd.idx);
 						printRegistersState();
 
 
@@ -1441,19 +1481,19 @@ int main(){
 						flags.Z = (*Rs.ptr == 0) ? 1 : 0;
 						flags.N = (*Rs.ptr & 0x80000000) ? 1 : 0;
 
-						printf("%04x - DIVXU W %c%d, er%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.idx);
+						printInstruction("%04x - DIVXU W %c%d, er%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.idx);
 						printRegistersState();
 						
 					}break;
 					case 0x4:{ // RTS
-						printf("%04x - RTS\n", pc);
+						printInstruction("%04x - RTS\n", pc);
 						pc = getMemory16(*SP) - 2;
 						*SP += 2;
 						printRegistersState();
 					}break;
 					case 0x5:{ // BSR d:8
 						int8_t disp = b;
-						printf("%04x - BSR @%d:8\n", pc, disp);
+						printInstruction("%04x - BSR @%d:8\n", pc, disp);
 						*SP -= 2;
 						setMemory16(*SP, pc + 2);
 
@@ -1464,7 +1504,7 @@ int main(){
 					}break;
 					case 0xC:{ // BSR d:16
 						int16_t disp = cd; 
-						printf("%04x - BSR @%d:16\n", pc, disp);
+						printInstruction("%04x - BSR @%d:16\n", pc, disp);
 						*SP -= 2;
 						setMemory16(*SP, pc + 4);
 
@@ -1474,25 +1514,25 @@ int main(){
 						printRegistersState();
 					}break;
 					case 0x6:{
-						printf("%04x - RTE\n", pc);
+						printInstruction("%04x - RTE\n", pc);
 						return 1; // UNIMPLEMENTED
 					}break;
 					case 0x7:{
-						printf("%04x - TRAPA\n", pc);
+						printInstruction("%04x - TRAPA\n", pc);
 						return 1; // UNIMPLEMENTED
 					}break;
 					case 0x8:{
 						int16_t disp = cd;
 						switch(bH){
 							case 0x0:{
-								printf("%04x - BRA %d:16\n", pc, disp);
+								printInstruction("%04x - BRA %d:16\n", pc, disp);
 								pc += 2 + disp;
 							}break;
 							case 0x1:{ // Unused in the ROM
-								printf("%04x - BRN %d:16\n", pc, disp);
+								printInstruction("%04x - BRN %d:16\n", pc, disp);
 							}break;
 							case 0x2:{
-								printf("%04x - BHI %d:16\n", pc, disp);
+								printInstruction("%04x - BHI %d:16\n", pc, disp);
 								if(!(flags.C | flags.Z)){
 									pc += 2 + disp;
 								}else{
@@ -1500,7 +1540,7 @@ int main(){
 								}
 							}break;
 							case 0x3:{
-								printf("%04x - BLS %d:16\n", pc, disp);
+								printInstruction("%04x - BLS %d:16\n", pc, disp);
 								if(flags.C | flags.Z){
 									pc += 2 + disp;
 								}else{
@@ -1509,7 +1549,7 @@ int main(){
 
 							}break;
 							case 0x4:{
-								printf("%04x - BCC %d:16\n", pc, disp);
+								printInstruction("%04x - BCC %d:16\n", pc, disp);
 								if(!flags.C){
 									pc += 2 + disp;
 								}else{
@@ -1518,7 +1558,7 @@ int main(){
 
 							}break;
 							case 0x5:{
-								printf("%04x - BCS %d:16\n", pc, disp);
+								printInstruction("%04x - BCS %d:16\n", pc, disp);
 								if(flags.C){
 									pc += 2 + disp;
 								}else{
@@ -1527,7 +1567,7 @@ int main(){
 
 							}break;
 							case 0x6:{
-								printf("%04x - BNE %d:16\n", pc, disp);
+								printInstruction("%04x - BNE %d:16\n", pc, disp);
 								if(!flags.Z){
 									pc += 2 + disp;
 								}else{
@@ -1536,7 +1576,7 @@ int main(){
 
 							}break;
 							case 0x7:{
-								printf("%04x - BEQ %d:16\n", pc, disp);
+								printInstruction("%04x - BEQ %d:16\n", pc, disp);
 								if(flags.Z){
 									pc += 2 + disp;
 								}else{
@@ -1545,7 +1585,7 @@ int main(){
 
 							}break;
 							case 0x8:{
-								printf("%04x - BVC %d:16\n", pc, disp);
+								printInstruction("%04x - BVC %d:16\n", pc, disp);
 								if(!flags.V){
 									pc += 2 + disp;
 								}else{
@@ -1554,7 +1594,7 @@ int main(){
 
 							}break;
 							case 0x9:{
-								printf("%04x - BVS %d:16\n", pc, disp);
+								printInstruction("%04x - BVS %d:16\n", pc, disp);
 								if(flags.V){
 									pc += 2 + disp;
 								}else{
@@ -1563,7 +1603,7 @@ int main(){
 
 							}break;
 							case 0xA:{
-								printf("%04x - BPL %d:16\n", pc, disp);
+								printInstruction("%04x - BPL %d:16\n", pc, disp);
 								if(!flags.N){
 									pc += 2 + disp;
 								}else{
@@ -1572,7 +1612,7 @@ int main(){
 
 							}break;
 							case 0xB:{
-								printf("%04x - BMI %d:16\n", pc, disp);
+								printInstruction("%04x - BMI %d:16\n", pc, disp);
 								if(flags.N){
 									pc += 2 + disp;
 								}else{
@@ -1581,7 +1621,7 @@ int main(){
 
 							}break;
 							case 0xC:{
-								printf("%04x - BGE %d:16\n", pc, disp);
+								printInstruction("%04x - BGE %d:16\n", pc, disp);
 								if(!(flags.N ^ flags.V)){
 									pc += 2 + disp;
 								}else{
@@ -1590,7 +1630,7 @@ int main(){
 
 							}break;
 							case 0xD:{
-								printf("%04x - BLT %d:16\n", pc, disp);
+								printInstruction("%04x - BLT %d:16\n", pc, disp);
 								if(flags.N ^ flags.V){
 									pc += 2 + disp;
 								}else{
@@ -1599,7 +1639,7 @@ int main(){
 
 							}break;
 							case 0xE:{
-								printf("%04x - BGT %d:16\n", pc, disp);
+								printInstruction("%04x - BGT %d:16\n", pc, disp);
 								if(!(flags.Z | (flags.N ^ flags.V))){
 									pc += 2 + disp;
 								}else{
@@ -1608,7 +1648,7 @@ int main(){
 
 							}break;
 							case 0xF:{
-								printf("%04x - BLE %d:16\n", pc, disp);
+								printInstruction("%04x - BLE %d:16\n", pc, disp);
 								if((flags.Z | (flags.N ^ flags.V))){
 									pc += 2 + disp;
 								}else{
@@ -1620,16 +1660,16 @@ int main(){
 					}break;
 					case 0x9:{ // JMP @ERn
 						struct RegRef32 Er = getRegRef32(bH);
-						printf("%04x - JMP @ER%d\n", pc, Er.idx);
+						printInstruction("%04x - JMP @ER%d\n", pc, Er.idx);
 						pc = (*Er.ptr & 0x0000FFFF) - 2; // Sub 2 cause we're incrementing 2 at the end of the loop
 					}break;
 					case 0xA:{ // JMP @aa:24
 						uint32_t address = (b << 16) | cd;
-						printf("%04x - JMP @0x%04x:24\n", pc, address);
+						printInstruction("%04x - JMP @0x%04x:24\n", pc, address);
 						pc = address - 2; // Sub 2 cause we're incrementing 2 at the end of the loop
 					}break;
 					case 0xB:{ // JMP @@aa:8 - UNUSED IN THE ROM, left unimplemented.
-						printf("%04x - ????\n", pc);
+						printInstruction("%04x - ????\n", pc);
 					}break;
 					case 0xD:{ // JSR @ERn
 						struct RegRef32 Er = getRegRef32(bH);
@@ -1637,7 +1677,7 @@ int main(){
 						*SP -= 2;
 						setMemory16(*SP, pc + 2);
 
-						printf("%04x - JSR @ER%d\n", pc, Er.idx);
+						printInstruction("%04x - JSR @ER%d\n", pc, Er.idx);
 						pc = (*Er.ptr & 0x0000FFFF) - 2; // Sub 2 cause we're incrementing 2 at the end of the loop
 
 						printMemory(*SP, 2);
@@ -1649,7 +1689,7 @@ int main(){
 						*SP -= 2;
 						setMemory16(*SP, pc + 4);
 
-						printf("%04x - JSR @0x%04x:24\n", pc, address);
+						printInstruction("%04x - JSR @0x%04x:24\n", pc, address);
 						pc = address - 2; // Sub 2 cause we're incrementing 2 at the end of the loop
 
 						printMemory(*SP, 2);
@@ -1657,7 +1697,7 @@ int main(){
 
 					}break;
 					case 0xF:{ // JSR @@aa:24 - UNUSED IN THE ROM, left unimplemented.
-						printf("%04x - ????\n", pc);
+						printInstruction("%04x - ????\n", pc);
 					}break;
 
 				}
@@ -1672,11 +1712,11 @@ int main(){
 
 						*Rd.ptr = *Rd.ptr | (1 << bitToSet);
 
-						printf("%04x - BSET r%d%c, r%d%c\n", pc, Rn.idx, Rn.loOrHiReg, Rd.idx, Rd.loOrHiReg);
+						printInstruction("%04x - BSET r%d%c, r%d%c\n", pc, Rn.idx, Rn.loOrHiReg, Rd.idx, Rd.loOrHiReg);
 						printRegistersState();
 					}break;
 					case 0x1:{
-						printf("%04x - BNOT\n", pc);
+						printInstruction("%04x - BNOT\n", pc);
 						return 1; // UNIMPLEMENTED
 					}break;
 					case 0x2:{ // BCLR Rn, Rd
@@ -1686,11 +1726,11 @@ int main(){
 
 						*Rd.ptr = *Rd.ptr & ~(1 << bitToClear);
 
-						printf("%04x - BCLR r%d%c, r%d%c\n", pc, Rn.idx, Rn.loOrHiReg, Rd.idx, Rd.loOrHiReg);
+						printInstruction("%04x - BCLR r%d%c, r%d%c\n", pc, Rn.idx, Rn.loOrHiReg, Rd.idx, Rd.loOrHiReg);
 						printRegistersState();
 					}break;
 					case 0x3:{
-						printf("%04x - BTST\n", pc);
+						printInstruction("%04x - BTST\n", pc);
 						return 1; // UNIMPLEMENTED
 					}break;
 					case 0x4:{ // OR.w Rs, Rd
@@ -1700,7 +1740,7 @@ int main(){
 						setFlagsMOV(newValue, 16);
 						*Rd.ptr = newValue;
 
-						printf("%04x - OR.w %c%d,%c%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.loOrHiReg,  Rd.idx); 
+						printInstruction("%04x - OR.w %c%d,%c%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.loOrHiReg,  Rd.idx); 
 						printRegistersState();
 					}break;
 					case 0x5:{ // XOR.w Rs, Rd
@@ -1710,7 +1750,7 @@ int main(){
 						setFlagsMOV(newValue, 16);
 						*Rd.ptr = newValue;
 
-						printf("%04x - XOR.w %c%d,%c%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.loOrHiReg,  Rd.idx); 
+						printInstruction("%04x - XOR.w %c%d,%c%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.loOrHiReg,  Rd.idx); 
 						printRegistersState();
 					}break;
 					case 0x6:{ // AND.w Rs, Rd
@@ -1720,15 +1760,15 @@ int main(){
 						setFlagsMOV(newValue, 16);
 						*Rd.ptr = newValue;
 
-						printf("%04x - AND.w %c%d,%c%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.loOrHiReg,  Rd.idx); 
+						printInstruction("%04x - AND.w %c%d,%c%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.loOrHiReg,  Rd.idx); 
 						printRegistersState();
 					}break;
 					case 0x7:{
 						uint8_t mostSignificantBit = bH >> 7;
 						if (mostSignificantBit == 0x1){
-							printf("%04x - BIST\n", pc);
+							printInstruction("%04x - BIST\n", pc);
 						}else{
-							printf("%04x - BST\n", pc);
+							printInstruction("%04x - BST\n", pc);
 						}					
 					}break;
 					case 0x8:{ 
@@ -1741,7 +1781,7 @@ int main(){
 							setFlagsMOV(value, 8);
 							*Rd.ptr = value;
 
-							printf("%04x - MOV.b @ER%d, R%d%c\n", pc, Rs.idx, Rd.idx, Rd.loOrHiReg); 
+							printInstruction("%04x - MOV.b @ER%d, R%d%c\n", pc, Rs.idx, Rd.idx, Rd.loOrHiReg); 
 						} else{// MOV.B Rs, @ERd 
 							struct RegRef8 Rs = getRegRef8(bL);
 							struct RegRef32 Rd = getRegRef32(bH);
@@ -1750,7 +1790,7 @@ int main(){
 
 							setFlagsMOV(value, 8);
 							setMemory8(*Rd.ptr, value);
-							printf("%04x - MOV.b R%d%c, @ER%d, \n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx);
+							printInstruction("%04x - MOV.b R%d%c, @ER%d, \n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx);
 							printMemory(*Rd.ptr, 1);
 						}
 						printRegistersState();
@@ -1762,14 +1802,14 @@ int main(){
 							uint16_t value = getMemory16(*Rs.ptr);
 							setFlagsMOV(value, 16);
 							*Rd.ptr = value;
-							printf("%04x - MOV.w @ER%d, %c%d\n", pc, Rs.idx, Rd.loOrHiReg, Rd.idx ); 
+							printInstruction("%04x - MOV.w @ER%d, %c%d\n", pc, Rs.idx, Rd.loOrHiReg, Rd.idx ); 
 						} else{ // MOV.w Rs, @ERd 
 							struct RegRef16 Rs = getRegRef16(bL);
 							struct RegRef32 Rd = getRegRef32(bH);
 							uint16_t value = *Rs.ptr;
 							setFlagsMOV(value, 16);
 							setMemory16(*Rd.ptr, value);
-							printf("%04x - MOV.w R%d%c, @ER%d, \n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx);
+							printInstruction("%04x - MOV.w R%d%c, @ER%d, \n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx);
 							printMemory(*Rd.ptr, 2);
 						}
 						printRegistersState();
@@ -1791,7 +1831,7 @@ int main(){
 									*SSU.SSSR = clearBit8(*SSU.SSSR, 1);
 								}
 
-								printf("%04x - MOV.b @%x:16, R%d%c\n", pc, address, Rd.idx, Rd.loOrHiReg); 
+								printInstruction("%04x - MOV.b @%x:16, R%d%c\n", pc, address, Rd.idx, Rd.loOrHiReg); 
 								printRegistersState();
 
 							}break;
@@ -1810,7 +1850,7 @@ int main(){
 									*SSU.SSSR = clearBit8(*SSU.SSSR, 3); // TEND
 								}
 								
-								printf("%04x - MOV.b R%d%c,@%x:16 \n", pc, Rs.idx, Rs.loOrHiReg, address); 
+								printInstruction("%04x - MOV.b R%d%c,@%x:16 \n", pc, Rs.idx, Rs.loOrHiReg, address); 
 								printMemory(address, 1);
 								printRegistersState();
 
@@ -1830,7 +1870,7 @@ int main(){
 								setFlagsMOV(value, 16);
 								*Rd.ptr = value;
 
-								printf("%04x - MOV.w @%x:16, %c%d\n", pc, address, Rd.loOrHiReg, Rd.idx); 
+								printInstruction("%04x - MOV.w @%x:16, %c%d\n", pc, address, Rd.loOrHiReg, Rd.idx); 
 								printRegistersState();
 
 							}break;
@@ -1844,7 +1884,7 @@ int main(){
 								setFlagsMOV(value, 16);
 								setMemory16(address, value);
 
-								printf("%04x - MOV.w %c%d,@%x:16 \n", pc, Rs.loOrHiReg, Rs.idx, address); 
+								printInstruction("%04x - MOV.w %c%d,@%x:16 \n", pc, Rs.loOrHiReg, Rs.idx, address); 
 								printMemory(address, 2);
 								printRegistersState();
 
@@ -1867,7 +1907,7 @@ int main(){
 							setFlagsMOV(value, 8);
 							*Rd.ptr = value;
 
-							printf("%04x - MOV.b @ER%d+, R%d%c\n", pc, Rs.idx, Rd.idx, Rd.loOrHiReg); 
+							printInstruction("%04x - MOV.b @ER%d+, R%d%c\n", pc, Rs.idx, Rd.idx, Rd.loOrHiReg); 
 
 						} else{
 							struct RegRef32 Rd = getRegRef32(bH);
@@ -1880,7 +1920,7 @@ int main(){
 							setMemory8(*Rs.ptr, value);
 							setFlagsMOV(value, 8);
 
-							printf("%04x - MOV.b R%d%c, @-ER%d, \n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx); 
+							printInstruction("%04x - MOV.b R%d%c, @-ER%d, \n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx); 
 							printMemory(*Rd.ptr, 1);
 
 						}
@@ -1903,7 +1943,7 @@ int main(){
 							setFlagsMOV(value, 16);
 							*Rd.ptr = value;
 
-							printf("%04x - MOV.w @ER%d+, %c%d\n", pc, Rs.idx, Rd.loOrHiReg, Rd.idx); 
+							printInstruction("%04x - MOV.w @ER%d+, %c%d\n", pc, Rs.idx, Rd.loOrHiReg, Rd.idx); 
 
 						} else{
 							struct RegRef32 Rd = getRegRef32(bH);
@@ -1915,7 +1955,7 @@ int main(){
 							setMemory16(*Rd.ptr, value);
 							setFlagsMOV(value, 16);
 
-							printf("%04x - MOV.w %c%d, @-ER%d, \n", pc, Rs.loOrHiReg, Rs.idx, Rd.idx); 
+							printInstruction("%04x - MOV.w %c%d, @-ER%d, \n", pc, Rs.loOrHiReg, Rs.idx, Rd.idx); 
 							printMemory(*Rd.ptr, 2);
 
 						}
@@ -1937,13 +1977,13 @@ int main(){
 							*Rd.ptr = value;
 							setFlagsMOV(value, 8);
 
-							printf("%04x - MOV.b @(%d:16, ER%d), R%d%c\n", pc, disp, Rs.idx, Rd.idx, Rd.loOrHiReg); 
+							printInstruction("%04x - MOV.b @(%d:16, ER%d), R%d%c\n", pc, disp, Rs.idx, Rd.idx, Rd.loOrHiReg); 
 
 						} else{ // To memory MOV.B Rs, @(d:16, ERd)
 							uint8_t value = *Rd.ptr;
 							setFlagsMOV(value, 8);
 							setMemory8(*Rs.ptr + signExtendedDisp, value);
-							printf("%04x - MOV.b R%d%c, @(%d:16, ER%d), \n", pc, Rd.idx, Rd.loOrHiReg, disp, Rs.idx); 
+							printInstruction("%04x - MOV.b R%d%c, @(%d:16, ER%d), \n", pc, Rd.idx, Rd.loOrHiReg, disp, Rs.idx); 
 							printMemory(*Rs.ptr + signExtendedDisp, 1);
 						}
 						printRegistersState();
@@ -1963,13 +2003,13 @@ int main(){
 							*Rd.ptr = value;
 							setFlagsMOV(value, 16);
 
-							printf("%04x - MOV.w @(%d:16, ER%d), %c%d\n", pc, disp, Rs.idx, Rd.loOrHiReg, Rd.idx); 
+							printInstruction("%04x - MOV.w @(%d:16, ER%d), %c%d\n", pc, disp, Rs.idx, Rd.loOrHiReg, Rd.idx); 
 
 						} else{ // To memory MOV.W Rs, @(d:16, ERd)
 							uint16_t value = *Rd.ptr;
 							setFlagsMOV(value, 16);
 							setMemory16(*Rs.ptr + signExtendedDisp, value);
-							printf("%04x - MOV.w %c%d, @(%d:16, ER%d), \n", pc, Rd.loOrHiReg, Rd.idx, disp, Rs.idx); 
+							printInstruction("%04x - MOV.w %c%d, @(%d:16, ER%d), \n", pc, Rd.loOrHiReg, Rd.idx, disp, Rs.idx); 
 							printMemory(*Rs.ptr + signExtendedDisp, 2);
 						}
 						printRegistersState();
@@ -1990,11 +2030,11 @@ int main(){
 
 						*Rd.ptr = *Rd.ptr | (1 << bitToSet);
 
-						printf("%04x - BSET #%d, r%d%c\n", pc, bitToSet, Rd.idx, Rd.loOrHiReg);
+						printInstruction("%04x - BSET #%d, r%d%c\n", pc, bitToSet, Rd.idx, Rd.loOrHiReg);
 						printRegistersState();
 					}break;
 					case 0x1:{
-						printf("%04x - BNOT\n", pc);
+						printInstruction("%04x - BNOT\n", pc);
 					}break;
 					case 0x2:{ // BCLR #xx:3, Rd
 
@@ -2004,36 +2044,36 @@ int main(){
 
 						*Rd.ptr = *Rd.ptr & ~(1 << bitToClear);
 
-						printf("%04x - BCLR #%d, r%d%c\n", pc, bitToClear, Rd.idx, Rd.loOrHiReg);
+						printInstruction("%04x - BCLR #%d, r%d%c\n", pc, bitToClear, Rd.idx, Rd.loOrHiReg);
 						printRegistersState();
 					}break;
 					case 0x3:{
-						printf("%04x - BTST\n", pc);
+						printInstruction("%04x - BTST\n", pc);
 					}break;
 					case 0x4:{
 						if (mostSignificantBit == 0x1){
-							printf("%04x - BIOR\n", pc);
+							printInstruction("%04x - BIOR\n", pc);
 						}else{
-							printf("%04x - BOR\n", pc);
+							printInstruction("%04x - BOR\n", pc);
 						}
 					}break;
 					case 0x5:{
 						if (mostSignificantBit == 0x1){
-							printf("%04x - BIXOR\n", pc);
+							printInstruction("%04x - BIXOR\n", pc);
 						}else{
-							printf("%04x - BXOR\n", pc);
+							printInstruction("%04x - BXOR\n", pc);
 						}
 					}break;
 					case 0x6:{
 						if (mostSignificantBit == 0x1){
-							printf("%04x - BIAND\n", pc);
+							printInstruction("%04x - BIAND\n", pc);
 						}else{
-							printf("%04x - BAND\n", pc);
+							printInstruction("%04x - BAND\n", pc);
 						}
 					}break;
 					case 0x7:{
 						if (mostSignificantBit == 0x1){
-							printf("%04x - BILD\n", pc);
+							printInstruction("%04x - BILD\n", pc);
 						}else{ // BLD #xx:3, Rd
 							struct RegRef8 Rd = getRegRef8(bL);		
 
@@ -2041,12 +2081,12 @@ int main(){
 
 							flags.C = *Rd.ptr & (1 << bitToLoad);
 
-							printf("%04x - BLD #%d, r%d%c\n", pc, bitToLoad, Rd.idx, Rd.loOrHiReg);
+							printInstruction("%04x - BLD #%d, r%d%c\n", pc, bitToLoad, Rd.idx, Rd.loOrHiReg);
 							printRegistersState();
 						}					
 					}break;
 					case 0x8:{
-						printf("%04x - MOV\n", pc);
+						printInstruction("%04x - MOV\n", pc);
 						return 1; // UNIMPLEMENTED
 					}break;
 					case 0x9:{ // XXX.w #xx:16, Rd
@@ -2055,42 +2095,42 @@ int main(){
 							case 0x0:{ // MOV.w #xx:16, Rd
 								setFlagsMOV(cd, 16);
 								*Rd.ptr = cd;
-								printf("%04x - MOV.w 0x%x,%c%d\n", pc, cd, Rd.loOrHiReg,  Rd.idx); 
+								printInstruction("%04x - MOV.w 0x%x,%c%d\n", pc, cd, Rd.loOrHiReg,  Rd.idx); 
 							}break;
 							case 0x1:{ // ADD.w #xx:16, Rd
 								setFlagsADD(*Rd.ptr, cd, 16);
 								*Rd.ptr += cd;
-								printf("%04x - ADD.w 0x%x,%c%d\n", pc, cd, Rd.loOrHiReg,  Rd.idx); 
+								printInstruction("%04x - ADD.w 0x%x,%c%d\n", pc, cd, Rd.loOrHiReg,  Rd.idx); 
 							}break;
 							case 0x2:{ // CMP.w #xx:16, Rd
 								setFlagsSUB(*Rd.ptr, cd, 16);
-								printf("%04x - CMP.w 0x%x,%c%d\n", pc, cd, Rd.loOrHiReg,  Rd.idx); 
+								printInstruction("%04x - CMP.w 0x%x,%c%d\n", pc, cd, Rd.loOrHiReg,  Rd.idx); 
 							}break;
 							case 0x3:{ // SUB.w #xx:16, Rd
 								setFlagsSUB(*Rd.ptr, cd, 16);
 								*Rd.ptr -= cd;
-								printf("%04x - SUB.w 0x%x,%c%d\n", pc, cd, Rd.loOrHiReg,  Rd.idx); 
+								printInstruction("%04x - SUB.w 0x%x,%c%d\n", pc, cd, Rd.loOrHiReg,  Rd.idx); 
 							}break;
 							case 0x4:{ // OR.w #xx:16, Rd
 								uint16_t value = cd;
 								uint16_t newValue = cd | *Rd.ptr;
 								setFlagsMOV(newValue, 16);
 								*Rd.ptr = newValue;
-								printf("%04x - OR.w 0x%x,%c%d\n", pc, cd, Rd.loOrHiReg,  Rd.idx); 
+								printInstruction("%04x - OR.w 0x%x,%c%d\n", pc, cd, Rd.loOrHiReg,  Rd.idx); 
 							}break;
 							case 0x5:{ // XOR.w #xx:16, Rd
 								uint16_t value = cd;
 								uint16_t newValue = cd ^ *Rd.ptr;
 								setFlagsMOV(newValue, 16);
 								*Rd.ptr = newValue;
-								printf("%04x - XOR.w 0x%x,%c%d\n", pc, cd, Rd.loOrHiReg,  Rd.idx); 
+								printInstruction("%04x - XOR.w 0x%x,%c%d\n", pc, cd, Rd.loOrHiReg,  Rd.idx); 
 							}break;
 							case 0x6:{ // AND.w #xx:16, Rd
 								uint16_t value = cd;
 								uint16_t newValue = cd & *Rd.ptr;
 								setFlagsMOV(newValue, 16);
 								*Rd.ptr = newValue;
-								printf("%04x - AND.w 0x%x,%c%d\n", pc, cd, Rd.loOrHiReg,  Rd.idx); 
+								printInstruction("%04x - AND.w 0x%x,%c%d\n", pc, cd, Rd.loOrHiReg,  Rd.idx); 
 							}break;
 						}
 						printRegistersState();
@@ -2102,47 +2142,47 @@ int main(){
 							case 0x0:{ // MOV.l #xx:32, ERd
 								setFlagsMOV(cdef, 32);
 								*Rd.ptr = cdef;
-								printf("%04x - MOV.l 0x%04x, ER%d\n", pc, cdef,  Rd.idx); 
+								printInstruction("%04x - MOV.l 0x%04x, ER%d\n", pc, cdef,  Rd.idx); 
 							}break;
 							case 0x1:{ // ADD.l #xx:32, ERd
 								setFlagsADD(*Rd.ptr, cdef, 32);
 								*Rd.ptr += cdef;
-								printf("%04x - ADD.l 0x%04x, ER%d\n", pc, cdef,  Rd.idx); 
+								printInstruction("%04x - ADD.l 0x%04x, ER%d\n", pc, cdef,  Rd.idx); 
 							}break;
 							case 0x2:{
 								// CMP.l #xx:32, ERd
 								setFlagsSUB(*Rd.ptr, cdef, 32);
-								printf("%04x - CMP.l 0x%04x, ER%d\n", pc, cdef,  Rd.idx); 
+								printInstruction("%04x - CMP.l 0x%04x, ER%d\n", pc, cdef,  Rd.idx); 
 							}break;
 							case 0x3:{ // SUB.l #xx:32, ERd
 								setFlagsSUB(*Rd.ptr, cdef, 32);
 								*Rd.ptr -= cdef;
-								printf("%04x - SUB.l 0x%04x, ER%d\n", pc, cdef,  Rd.idx); 
+								printInstruction("%04x - SUB.l 0x%04x, ER%d\n", pc, cdef,  Rd.idx); 
 							}break;
 							case 0x4:{ // OR.l #xx:32, ERd
 								uint32_t newValue = cdef | *Rd.ptr;
 								setFlagsMOV(newValue, 32);
 								*Rd.ptr = newValue;
-								printf("%04x - OR.l 0x%04x, ER%d\n", pc, cdef,  Rd.idx); 
+								printInstruction("%04x - OR.l 0x%04x, ER%d\n", pc, cdef,  Rd.idx); 
 							}break;
 							case 0x5:{ // XOR.l #xx:32, ERd
 								uint32_t newValue = cdef ^ *Rd.ptr;
 								setFlagsMOV(newValue, 32);
 								*Rd.ptr = newValue;
-								printf("%04x - XOR.l 0x%04x, ER%d\n", pc, cdef,  Rd.idx); 
+								printInstruction("%04x - XOR.l 0x%04x, ER%d\n", pc, cdef,  Rd.idx); 
 							}break;
 							case 0x6:{ // AND.l #xx:32, ERd
 								uint32_t newValue = cdef & *Rd.ptr;
 								setFlagsMOV(newValue, 32);
 								*Rd.ptr = newValue;
-								printf("%04x - AND.l 0x%04x, ER%d\n", pc, cdef,  Rd.idx); 
+								printInstruction("%04x - AND.l 0x%04x, ER%d\n", pc, cdef,  Rd.idx); 
 							}break;
 						}
 						printRegistersState();
 						pc+=4;
 					}break;
 					case 0xB:{
-						printf("%04x - EEPMOV\n", pc);
+						printInstruction("%04x - EEPMOV\n", pc);
 						return 1; // UNIMPLEMENTED
 					}break;
 					case 0xC:{
@@ -2152,7 +2192,7 @@ int main(){
 								// BLD #xx:3, @ERd
 								struct RegRef32 Rd = getRegRef32(bH);		
 								int bitToLoad = dH;
-								printf("%04x - BLD #%d, @ER%d\n", pc, bitToLoad, Rd.idx);
+								printInstruction("%04x - BLD #%d, @ER%d\n", pc, bitToLoad, Rd.idx);
 								flags.C = getMemory8(*Rd.ptr) & (1 << bitToLoad);
 								printRegistersState();
 								pc+=2;
@@ -2170,7 +2210,7 @@ int main(){
 						if (cH == 0x6){
 							switch(cL){
 								case 0x3:{
-									printf("%04x - BTST\n", pc);
+									printInstruction("%04x - BTST\n", pc);
 									return 1; // UNIMPLEMENTED
 								}break;
 							}
@@ -2178,36 +2218,36 @@ int main(){
 							uint8_t mostSignificantBit = dH >> 7;
 							switch(cL){
 								case 0x3:{
-									printf("%04x - BTST\n", pc);
+									printInstruction("%04x - BTST\n", pc);
 								}break;
 								case 0x4:{
 									if (mostSignificantBit == 0x1){
-										printf("%04x - BIOR\n", pc);
+										printInstruction("%04x - BIOR\n", pc);
 									}else{
-										printf("%04x - BOR\n", pc);
+										printInstruction("%04x - BOR\n", pc);
 									}
 								}break;
 								case 0x5:{
 									if (mostSignificantBit == 0x1){
-										printf("%04x - BXOR\n", pc);
+										printInstruction("%04x - BXOR\n", pc);
 									}else{
-										printf("%04x - BIXOR\n", pc);
+										printInstruction("%04x - BIXOR\n", pc);
 									}
 								}break;
 								case 0x6:{
 									if (mostSignificantBit == 0x1){
-										printf("%04x - BIAND\n", pc);
+										printInstruction("%04x - BIAND\n", pc);
 									}else{
-										printf("%04x - BAND\n", pc);
+										printInstruction("%04x - BAND\n", pc);
 									}
 								}break;
 								case 0x7:{
 									if (mostSignificantBit == 0x1){
-										printf("%04x - BILD\n", pc);
+										printInstruction("%04x - BILD\n", pc);
 									}else{ // BLD #xx:3, @ERd
 										int bitToLoad = dH;
 										uint32_t address = (0x00FFFF00) | b;
-										printf("%04x - BLD #%d, @0x%x:8\n", pc, bitToLoad, address);
+										printInstruction("%04x - BLD #%d, @0x%x:8\n", pc, bitToLoad, address);
 										flags.C =  getMemory8(address) & (1 << bitToLoad);
 									}
 								}break;
@@ -2222,24 +2262,24 @@ int main(){
 						switch(c){
 							case 0x70:{ // BSET #xx:3, @ERd
 								int bitToSet = dH;
-								printf("%04x - BSET #%d, @ER%d\n", pc, bitToSet, Rd.idx);
+								printInstruction("%04x - BSET #%d, @ER%d\n", pc, bitToSet, Rd.idx);
 								setMemory8(*Rd.ptr, getMemory8(*Rd.ptr) | (1 << bitToSet));
 							}break;
 							case 0x60:{ // BSET Rn, @ERd
 								struct RegRef8 Rn = getRegRef8(dH);		
 								int bitToSet = *Rn.ptr;
-								printf("%04x - BSET r%d%c, @ER%d\n", pc, Rn.idx, Rn.loOrHiReg, Rd.idx);
+								printInstruction("%04x - BSET r%d%c, @ER%d\n", pc, Rn.idx, Rn.loOrHiReg, Rd.idx);
 								setMemory8(*Rd.ptr, getMemory8(*Rd.ptr) | (1 << bitToSet));
 							}break;
 							case 0x72:{ // BCLR #xx:3, @ERd
 								int bitToClear = dH;
-								printf("%04x - BCLR #%d, @ER%d\n", pc, bitToClear, Rd.idx);
+								printInstruction("%04x - BCLR #%d, @ER%d\n", pc, bitToClear, Rd.idx);
 								setMemory8(*Rd.ptr, getMemory8(*Rd.ptr) & ~(1 << bitToClear));
 							}break;
 							case 0x62:{ // BCLR Rn, @ERd
 								struct RegRef8 Rn = getRegRef8(dH);		
 								int bitToClear = *Rn.ptr;
-								printf("%04x - BCLR r%d%c, @ER%d\n", pc, Rn.idx, Rn.loOrHiReg, Rd.idx);
+								printInstruction("%04x - BCLR r%d%c, @ER%d\n", pc, Rn.idx, Rn.loOrHiReg, Rd.idx);
 								setMemory8(*Rd.ptr, getMemory8(*Rd.ptr) & ~(1 << bitToClear));
 							}break;
 						}
@@ -2252,24 +2292,24 @@ int main(){
 						switch(c){
 							case 0x70:{ // BSET #xx:3, @aa:8
 								int bitToSet = dH;
-								printf("%04x - BSET #%d, @0x%x:8\n", pc, bitToSet, address);
+								printInstruction("%04x - BSET #%d, @0x%x:8\n", pc, bitToSet, address);
 								setMemory8(address, getMemory8(address) | (1 << bitToSet));
 							}break;
 							case 0x60:{ // BSET Rn, @aa:8
 								struct RegRef8 Rn = getRegRef8(dH);		
 								int bitToSet = *Rn.ptr;
-								printf("%04x - BSET r%d%c, @0x%x:8\n", pc, Rn.idx, Rn.loOrHiReg, address);
+								printInstruction("%04x - BSET r%d%c, @0x%x:8\n", pc, Rn.idx, Rn.loOrHiReg, address);
 								setMemory8(address, getMemory8(address) | (1 << bitToSet));
 							}break;
 							case 0x72:{ // BCLR #xx:3, @aa:8
 								int bitToClear = dH;
-								printf("%04x - BCLR #%d, @0x%x:8\n", pc, bitToClear, address);
+								printInstruction("%04x - BCLR #%d, @0x%x:8\n", pc, bitToClear, address);
 								setMemory8(address, getMemory8(address) & ~(1 << bitToClear));
 							}break;
 							case 0x62:{ // BCLR Rn, @aa:8
 								struct RegRef8 Rn = getRegRef8(dH);		
 								int bitToClear = *Rn.ptr;
-								printf("%04x - BCLR r%d%c, @0x%x:8\n", pc, Rn.idx, Rn.loOrHiReg, address);
+								printInstruction("%04x - BCLR r%d%c, @0x%x:8\n", pc, Rn.idx, Rn.loOrHiReg, address);
 								setMemory8(address, getMemory8(address) & ~(1 << bitToClear));
 							}break;
 						}
@@ -2284,21 +2324,21 @@ int main(){
 
 							if (cL == 0x7){
 								if (mostSignificantBit == 0x1){
-									printf("%04x - BIST\n", pc);
+									printInstruction("%04x - BIST\n", pc);
 								}else{
-									printf("%04x - BST\n", pc);
+									printInstruction("%04x - BST\n", pc);
 							}						}
 						}
 						if (cH == 0x6 || cH == 0x7){
 							switch(cL){
 								case 0:{
-									printf("%04x - BSET\n", pc);
+									printInstruction("%04x - BSET\n", pc);
 								}break;
 								case 1:{
-									printf("%04x - BNOT\n", pc);
+									printInstruction("%04x - BNOT\n", pc);
 								}break;
 								case 2:{
-									printf("%04x - BCLR\n", pc);
+									printInstruction("%04x - BCLR\n", pc);
 								}break;
 
 							}
@@ -2315,11 +2355,11 @@ int main(){
 				setFlagsADD(*Rd.ptr, value, 8);
 				*Rd.ptr += value;
 
-				printf("%04x - ADD.b 0x%x,R%d%c\n", pc, value, Rd.idx, Rd.loOrHiReg); //Note: Dmitry's dissasembler sometimes outputs address in decimal (0xdd) not sure why
+				printInstruction("%04x - ADD.b 0x%x,R%d%c\n", pc, value, Rd.idx, Rd.loOrHiReg); //Note: Dmitry's dissasembler sometimes outputs address in decimal (0xdd) not sure why
 				printRegistersState();
 			}break;
 			case 0x9:{
-				printf("%04x - ADDX\n", pc);
+				printInstruction("%04x - ADDX\n", pc);
 				return 1; // UNIMPLEMENTED
 			}break;
 
@@ -2330,13 +2370,13 @@ int main(){
 
 				setFlagsSUB(*Rd.ptr, value, 8);
 
-				printf("%04x - CMP.b 0x%x,R%d%c\n", pc, value, Rd.idx, Rd.loOrHiReg); 
+				printInstruction("%04x - CMP.b 0x%x,R%d%c\n", pc, value, Rd.idx, Rd.loOrHiReg); 
 				printRegistersState();
 
 			}break;
 
 			case 0xB:{
-				printf("%04x - SUBX\n", pc);
+				printInstruction("%04x - SUBX\n", pc);
 				return 1; // UNIMPLEMENTED
 			}break;
 
@@ -2348,7 +2388,7 @@ int main(){
 				setFlagsMOV(newValue, 8);
 				*Rd.ptr = newValue;
 
-				printf("%04x - OR.b 0x%x,R%d%c\n", pc, value, Rd.idx, Rd.loOrHiReg); 
+				printInstruction("%04x - OR.b 0x%x,R%d%c\n", pc, value, Rd.idx, Rd.loOrHiReg); 
 				printRegistersState();
 			}break;
 	
@@ -2360,7 +2400,7 @@ int main(){
 				setFlagsMOV(newValue, 8);
 				*Rd.ptr = newValue;
 
-				printf("%04x - XOR.b 0x%x,R%d%c\n", pc, value, Rd.idx, Rd.loOrHiReg); 
+				printInstruction("%04x - XOR.b 0x%x,R%d%c\n", pc, value, Rd.idx, Rd.loOrHiReg); 
 				printRegistersState();
 			}break;
 
@@ -2372,7 +2412,7 @@ int main(){
 				setFlagsMOV(newValue, 8);
 				*Rd.ptr = newValue;
 
-				printf("%04x - AND.b 0x%x,R%d%c\n", pc, value, Rd.idx, Rd.loOrHiReg); 
+				printInstruction("%04x - AND.b 0x%x,R%d%c\n", pc, value, Rd.idx, Rd.loOrHiReg); 
 				printRegistersState();
 			}break;
 
@@ -2384,12 +2424,12 @@ int main(){
 				setFlagsMOV(value, 8);
 				*Rd.ptr = value;
 
-				printf("%04x - MOV.b 0x%x,R%d%c\n", pc, value, Rd.idx, Rd.loOrHiReg); 
+				printInstruction("%04x - MOV.b 0x%x,R%d%c\n", pc, value, Rd.idx, Rd.loOrHiReg); 
 				printRegistersState();
 			}break;
 
 			default:{
-				printf("???\n");
+				printInstruction("???\n");
 				return 1; // UNIMPLEMENTED
 			} break;
 		}
@@ -2498,14 +2538,15 @@ int main(){
 					}
 				}
 				// LCD
+
 				if((getMemory8(PORT1)) & LCD_DATA_PIN){ // Might need to be high, check later
-					lcd.memory[(lcd.currentPage * 0x100) + lcd.currentColumn*2 + lcd.currentByte] = *SSU.SSTDR;	
+					lcd.memory[(lcd.currentPage * LCD_WIDTH * LCD_BYTES_PER_STRIPE) + lcd.currentColumn*LCD_BYTES_PER_STRIPE + lcd.currentByte] = *SSU.SSTDR;	
 					if (lcd.currentByte == 1){
-						lcd.currentColumn = (lcd.currentColumn + 1) % 127;
+						lcd.currentColumn = lcd.currentColumn + 1;
 					}
 					lcd.currentByte = (lcd.currentByte + 1) % 2;
 				}
-				else if(~(getMemory8(PORT1)) & LCD_PIN){ 
+				else if(~(getMemory8(PORT1)) & LCD_PIN){
 					switch(lcd.state){
 						case LCD_EMPTY:{
 							switch(*SSU.SSTDR){
