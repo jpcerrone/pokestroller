@@ -1,5 +1,6 @@
 #pragma once
 #include <stdint.h>
+#include <stdbool.h>
 
 struct RegRef8{
 	 int idx;
@@ -78,4 +79,10 @@ struct Lcd_t{
 	uint8_t currentColumn;
 	uint8_t currentPage;
 	uint8_t currentByte;
+
 };
+
+static bool shouldRedrawScreen;
+void initWalker();
+int runNextInstruction(bool* redrawScreen);
+void fillVideoBuffer(uint32_t* videoBuffer);
