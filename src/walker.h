@@ -65,7 +65,9 @@ struct Accelerometer_t{
 #define LCD_WIDTH 96
 #define LCD_BYTES_PER_STRIPE 2
 #define LCD_HEIGHT 64
-static const int LCD_MEM_SIZE = LCD_WIDTH * LCD_HEIGHT / 4; // /4 cuz in 2B we get 8px ( 4px per byte)
+#define LCD_MEM_WIDTH 128 // TODO: figure out way to traverse the memory without needing to simulate the bigger RAM size
+#define LCD_MEM_HEIGHT 176
+static const int LCD_MEM_SIZE = LCD_MEM_WIDTH * LCD_MEM_HEIGHT / 4; // /4 cuz in 2B we get 8px ( 4px per byte)
 enum LCD_STATES{
 	LCD_EMPTY,
 	LCD_READING_CONTRAST,

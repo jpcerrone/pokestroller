@@ -6,6 +6,8 @@
 #include <string.h>
 #include <stdarg.h>
 
+#include <assert.h>
+
 #include "walker.h"
 
 /*
@@ -116,14 +118,13 @@ void printInstruction(const char* format, ...){
 #endif
 }
 
-#define GRAY_3 0x00333333
-#define GRAY_2 0x00666666
-#define GRAY_1 0x00999999
-#define GRAY_0 0x00CCCCCC
+#define GRAY_0 0x00333333
+#define GRAY_1 0x00666666
+#define GRAY_2 0x00999999
+#define GRAY_3 0x00CCCCCC
 const static uint32_t palette[4] = {GRAY_3, GRAY_2, GRAY_1, GRAY_0};
 
 void fillVideoBuffer(uint32_t* videoBuffer){
-	shouldRedrawScreen = true;
 	//FILE* lcdFile;
 	//fopen_s(&lcdFile, "lcdDump.bin","wb");
 	//fwrite(lcd.memory, 1, LCD_MEM_SIZE, lcdFile);
@@ -314,7 +315,7 @@ static const uint8_t RE = 0x40; // Reception Enabled
 static int pc;
 static int instructionsToStep;
 
-int runNextInstruction(bool* redrawScren){
+int runNextInstruction(bool* redrawScreen){
 	// Skip certain instructions
 	if (pc == 0x336){ // Factory Tests
 		pc += 4;
@@ -2228,18 +2229,22 @@ int runNextInstruction(bool* redrawScren){
 							int bitToSet = dH;
 							printInstruction("%04x - BSET #%d, @0x%x:8\n", pc, bitToSet, address);
 							setMemory8(address, getMemory8(address) | (1 << bitToSet));
+							/*
 							if((address == PORT1) && ((1 << bitToSet) == LCD_PIN)){ // TODO: check other BCLR may hold the data pin address too (unlikely)
-								*redrawScren = true;
+								*redrawScreen = true;
 							}
+							*/
 						}break;
 						case 0x60:{ // BSET Rn, @aa:8
 							struct RegRef8 Rn = getRegRef8(dH);		
 							int bitToSet = *Rn.ptr;
 							printInstruction("%04x - BSET r%d%c, @0x%x:8\n", pc, Rn.idx, Rn.loOrHiReg, address);
 							setMemory8(address, getMemory8(address) | (1 << bitToSet));
+							/*
 							if((address == PORT1) && ((1 << bitToSet) == LCD_PIN)){
-								*redrawScren = true;
+								*redrawScreen = true;
 							}
+							*/
 						}break;
 						case 0x72:{ // BCLR #xx:3, @aa:8
 							int bitToClear = dH;
@@ -2481,7 +2486,9 @@ int runNextInstruction(bool* redrawScren){
 			// LCD
 
 			if((getMemory8(PORT1)) & LCD_DATA_PIN){ 
-				lcd.memory[(lcd.currentPage * LCD_WIDTH * LCD_BYTES_PER_STRIPE) + lcd.currentColumn*LCD_BYTES_PER_STRIPE + lcd.currentByte] = *SSU.SSTDR;	
+				size_t lcdMemIndex = (lcd.currentPage * LCD_WIDTH * LCD_BYTES_PER_STRIPE) + lcd.currentColumn*LCD_BYTES_PER_STRIPE + lcd.currentByte;
+				assert(lcdMemIndex < LCD_MEM_SIZE);
+				lcd.memory[lcdMemIndex] = *SSU.SSTDR;	
 				if (lcd.currentByte == 1){
 					lcd.currentColumn = lcd.currentColumn + 1;
 				}
@@ -2620,7 +2627,6 @@ void initWalker(){
 	lcd.contrast = 20;
 	lcd.state = LCD_EMPTY;
 	lcd.memory = malloc(LCD_MEM_SIZE);
-	memset(lcd.memory, 0x44, LCD_MEM_SIZE); // TEST value 0x44
 
 	FILE* romFile = fopen("roms/rom.bin","r");
 	if(!romFile){

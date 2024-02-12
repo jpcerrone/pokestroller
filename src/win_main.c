@@ -49,7 +49,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 	bmInfoHeader.biCompression = BI_RGB;
 	bmInfoHeader.biWidth = nativeRes.width;
 	bmInfoHeader.biHeight = -nativeRes.height; // Negative means it'll be filled top-down
-	bmInfoHeader.biPlanes = 1;       // MSDN sais it must be set to 1, legacy reasons
+	bmInfoHeader.biPlanes = 1;       // MSDN says it must be set to 1, legacy reasons
 	bmInfoHeader.biBitCount = 32;    // R+G+B+padding each 8bits
 	bitmapInfo.bmiHeader = bmInfoHeader;
 
@@ -101,6 +101,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 		walkerRunning = true;
 		bool redrawScreen = false;
 		// mode = RUN;
+		int cycleCount = 0;
 		while (walkerRunning) {
 			// Process Messages
 			MSG msg = {0};
@@ -132,10 +133,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
 			}
 			runNextInstruction(&redrawScreen);
-			if (redrawScreen){
+			if ((cycleCount % 10000) == 0){ // Draw once every 10K cycles for now
 				fillVideoBuffer(bitMapMemory);
 				StretchDIBits(windowDeviceContext, 0, 0, screenRes.width, screenRes.height, 0, 0, nativeRes.width, nativeRes.height, bitMapMemory, &bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
+				redrawScreen = false;
 			}
+			cycleCount++;
 		}
 	}
 	// TODO: migrate stepping code
