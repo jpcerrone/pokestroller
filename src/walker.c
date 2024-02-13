@@ -135,16 +135,8 @@ void fillVideoBuffer(uint32_t* videoBuffer){
 			uint8_t secondByteForX = (lcd.memory[2*x + (y/8)*LCD_WIDTH*LCD_BYTES_PER_STRIPE + 1] & (1<<yOffsetStripe)) >> yOffsetStripe;
 			int paletteIdx = firstByteForX + secondByteForX;
 			uint32_t color = palette[paletteIdx];
-			/*
-			if(color != GRAY_3){
-				printf("*");
-			} else{
-				printf("-");
-			}
-			*/
 			videoBuffer[y*LCD_WIDTH + x] = color;
 		}
-		//printf("\n");
 	}
 	//fclose(lcdFile);
 
@@ -377,7 +369,7 @@ int runNextInstruction(bool* redrawScreen){
 	uint8_t fL = f & 0xF;
 
 	uint32_t cdef = cd << 16 | ef;
-	if (pc == 0x82de) { // Breakpoint for debugging
+	if (pc == 0xb19e) { // Breakpoint for debugging
 		int x = 3;
 	}
 	switch(aH){
@@ -1652,7 +1644,7 @@ int runNextInstruction(bool* redrawScreen){
 				}break;
 				case 0x1:{
 					printInstruction("%04x - BNOT\n", pc);
-					return 1; // UNIMPLEMENTED
+					return 1; // UNUSED IN THE ROM
 				}break;
 				case 0x2:{ // BCLR Rn, Rd
 					struct RegRef8 Rd = getRegRef8(bL);		
@@ -1698,12 +1690,19 @@ int runNextInstruction(bool* redrawScreen){
 					printInstruction("%04x - AND.w %c%d,%c%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.loOrHiReg,  Rd.idx); 
 					printRegistersState();
 				}break;
-				case 0x7:{
+				case 0x7:{ // BST #xx:3, Rd
 					uint8_t mostSignificantBit = bH >> 7;
 					if (mostSignificantBit == 0x1){
 						printInstruction("%04x - BIST\n", pc);
 					}else{
-						printInstruction("%04x - BST\n", pc);
+						uint8_t bitToSet = bH;
+						struct RegRef8 Rd = getRegRef8(bL);
+						if (flags.C == 0){
+							setMemory8(*Rd.ptr, getMemory8(*Rd.ptr) & ~(1 << bitToSet));
+						} else{
+							setMemory8(*Rd.ptr, getMemory8(*Rd.ptr) | (1 << bitToSet));
+						}
+						printInstruction("%04x - BST #%d, R%d%c\n", pc, bitToSet, Rd.idx, Rd.loOrHiReg);
 					}					
 				}break;
 				case 0x8:{ 
@@ -1969,6 +1968,7 @@ int runNextInstruction(bool* redrawScreen){
 					printRegistersState();
 				}break;
 				case 0x1:{
+					return 1; // UNUSED IN THE ROM
 					printInstruction("%04x - BNOT\n", pc);
 				}break;
 				case 0x2:{ // BCLR #xx:3, Rd
@@ -2198,13 +2198,23 @@ int runNextInstruction(bool* redrawScreen){
 						case 0x70:{ // BSET #xx:3, @ERd
 							int bitToSet = dH;
 							printInstruction("%04x - BSET #%d, @ER%d\n", pc, bitToSet, Rd.idx);
-						setMemory8(*Rd.ptr, getMemory8(*Rd.ptr) | (1 << bitToSet));
+							setMemory8(*Rd.ptr, getMemory8(*Rd.ptr) | (1 << bitToSet));
 						}break;
 						case 0x60:{ // BSET Rn, @ERd
 							struct RegRef8 Rn = getRegRef8(dH);		
 							int bitToSet = *Rn.ptr;
 							printInstruction("%04x - BSET r%d%c, @ER%d\n", pc, Rn.idx, Rn.loOrHiReg, Rd.idx);
-						setMemory8(*Rd.ptr, getMemory8(*Rd.ptr) | (1 << bitToSet));
+							setMemory8(*Rd.ptr, getMemory8(*Rd.ptr) | (1 << bitToSet));
+						}break;
+						case 0x71:{ // BNOT #xx:3, @ERd
+							int bitToInvert = dH;
+							bool bitValue = getMemory8(*Rd.ptr) & bitToInvert;
+							if (bitValue == 1){
+								setMemory8(*Rd.ptr, getMemory8(*Rd.ptr) & ~(1 << bitToInvert));
+							} else{
+								setMemory8(*Rd.ptr, getMemory8(*Rd.ptr) | (1 << bitToInvert));
+							}
+							printInstruction("%04x - BNOT #%d, @ER%d\n", pc, bitToInvert, Rd.idx);
 						}break;
 						case 0x72:{ // BCLR #xx:3, @ERd
 							int bitToClear = dH;
@@ -2216,6 +2226,15 @@ int runNextInstruction(bool* redrawScreen){
 							int bitToClear = *Rn.ptr;
 							printInstruction("%04x - BCLR r%d%c, @ER%d\n", pc, Rn.idx, Rn.loOrHiReg, Rd.idx);
 							setMemory8(*Rd.ptr, getMemory8(*Rd.ptr) & ~(1 << bitToClear));
+						}break;
+						case 0x67:{ // BST ##xx:3, @ERd
+							int bitToSet = dH;
+							if (flags.C == 0){
+								setMemory8(*Rd.ptr, getMemory8(*Rd.ptr) & ~(1 << bitToSet));
+							} else{
+								setMemory8(*Rd.ptr, getMemory8(*Rd.ptr) | (1 << bitToSet));
+							}
+							printInstruction("%04x - BST #%d, @ER%d\n", pc, bitToSet, Rd.idx);
 						}break;
 					}
 					printMemory(*Rd.ptr, 1);
@@ -2258,39 +2277,13 @@ int runNextInstruction(bool* redrawScreen){
 							setMemory8(address, getMemory8(address) & ~(1 << bitToClear));
 							
 						}break;
+						case 0x67:{ // BST - Unused in the ROM
+							return 1;
+						} break;
 					}
 					printMemory(address, 1);
 					pc+=2;
 				} break;
-				/*
-						// Here bH is the "register designation field" dont know what that is, so ignorign it for now
-						// togetherwith bL it can also be "aa" which is the "absolute address field"
-						if (cH == 0x6){
-							uint8_t mostSignificantBit = dH >> 7;
-
-							if (cL == 0x7){
-								if (mostSignificantBit == 0x1){
-									printInstruction("%04x - BIST\n", pc);
-								}else{
-									printInstruction("%04x - BST\n", pc);
-							}						}
-						}
-						if (cH == 0x6 || cH == 0x7){
-							switch(cL){
-								case 0:{
-									printInstruction("%04x - BSET\n", pc);
-								}break;
-								case 1:{
-									printInstruction("%04x - BNOT\n", pc);
-								}break;
-								case 2:{
-									printInstruction("%04x - BCLR\n", pc);
-								}break;
-
-							}
-						}
-						pc+=2;
-				*/
 			}
 		}break;
 		case 0x8:{ // ADD.B #xx:8, Rd
@@ -2617,6 +2610,12 @@ void initWalker(){
 	eeprom.memory = malloc(64 * 1024);
 	memset(eeprom.memory, 0xFF, 64 * 1024);
 
+#ifndef INIT_EEPROM
+	FILE *eepromFile = fopen("roms/eeprom.bin", "r");
+	fread(eeprom.memory, 1, 64* 1024, eepromFile);
+	fclose(eepromFile);
+#endif
+
 	memset(&accel, 0, sizeof(accel));
 	accel.memory = malloc(29);
 	memset(accel.memory, 0, 29);
@@ -2638,6 +2637,7 @@ void initWalker(){
 	rewind (romFile);
 
 	fread(memory,1,romSize ,romFile);
+	fclose(romFile);
 
 	// Init SSU registers
 	SSU.SSCRH = &memory[0xF0E0]; 
@@ -2668,5 +2668,4 @@ void initWalker(){
 	printRegistersState();
 
 	pc = entry;
-	fclose(romFile);
 }
