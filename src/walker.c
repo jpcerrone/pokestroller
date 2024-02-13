@@ -369,7 +369,7 @@ int runNextInstruction(bool* redrawScreen){
 	uint8_t fL = f & 0xF;
 
 	uint32_t cdef = cd << 16 | ef;
-	if (pc == 0xb19e) { // Breakpoint for debugging
+	if (pc == 0x7356) { // Breakpoint for debugging
 		int x = 3;
 	}
 	switch(aH){
@@ -412,6 +412,9 @@ int runNextInstruction(bool* redrawScreen){
 											printRegistersState();
 
 										}break;
+										default:{
+											return 1;
+										} break;
 									}
 									pc += 4;
 
@@ -550,6 +553,10 @@ int runNextInstruction(bool* redrawScreen){
 
 									pc += 2;
 								}break;
+								default:{
+									return 1;
+								} break;
+
 
 							}
 
@@ -569,6 +576,10 @@ int runNextInstruction(bool* redrawScreen){
 											printInstruction("%04x - LDC\n", pc); // Unused in the ROM
 										}
 									}break;
+									default:{
+										return 1;
+									} break;
+
 								}
 							}
 						}break;
@@ -603,6 +614,10 @@ int runNextInstruction(bool* redrawScreen){
 										printRegistersState();
 										pc += 2;
 									}break;
+									default:{
+										return 1;
+									} break;
+
 								}
 							};
 						}break;
@@ -637,6 +652,10 @@ int runNextInstruction(bool* redrawScreen){
 										printRegistersState();
 										pc += 2;
 									}break;
+									default:{
+										return 1;
+									} break;
+
 								}
 							};
 						}break;
@@ -656,6 +675,10 @@ int runNextInstruction(bool* redrawScreen){
 										printInstruction("%04x - AND\n", pc);
 										return 1; // UNIMPLEMENTED
 									}break;
+									default:{
+										return 1;
+									} break;
+
 								}
 							};
 						}break;
@@ -742,7 +765,9 @@ int runNextInstruction(bool* redrawScreen){
 							printInstruction("%04x - ADD.l ER%d, ER%d\n", pc, Rs.idx,  Rd.idx); 
 							printRegistersState();
 						}break;
-
+						default:{
+							return 1;
+						} break;
 					}
 				}break;
 				case 0xB:{ // ADDS and INC
@@ -786,6 +811,9 @@ int runNextInstruction(bool* redrawScreen){
 							*Rd.ptr += 2;
 							printInstruction("%04x - INC.l #2, ER%d\n", pc, Rd.idx);
 						}break;
+						default:{
+							return 1;
+						} break;
 					}
 					printRegistersState();
 				}break;
@@ -838,8 +866,14 @@ int runNextInstruction(bool* redrawScreen){
 							printInstruction("%04x - MOV.l ER%d, ER%d\n", pc, Rs.idx,  Rd.idx); 
 							printRegistersState();
 						}break;
+						default:{
+							return 1;
+						} break;
 					}
 				}break;
+				default:{
+					return 1;
+				} break;
 
 			}
 		}break;
@@ -892,6 +926,9 @@ int runNextInstruction(bool* redrawScreen){
 							flags.V = flags.C && !(*Rd.ptr & 0x80000000);
 							printInstruction("%04x - SHAL.l er%d\n", pc, Rd.idx);
 						}break;
+						default:{
+							return 1;
+						} break;
 					}
 					printRegistersState();
 				}break;
@@ -935,6 +972,9 @@ int runNextInstruction(bool* redrawScreen){
 							setFlagsMOV(*Rd.ptr, 32);
 							printInstruction("%04x - SHAR.l er%d\n", pc, Rd.idx);
 						}break;
+						default:{
+							return 1;
+						} break;
 					}
 					printRegistersState();
 				}break;
@@ -985,6 +1025,9 @@ int runNextInstruction(bool* redrawScreen){
 							setFlagsMOV(*Rd.ptr, 32);
 							printInstruction("%04x - ROTL.l er%d\n", pc, Rd.idx);
 						}break;
+						default:{
+							return 1;
+						} break;
 					}
 					printRegistersState();
 				}break;
@@ -1079,6 +1122,9 @@ int runNextInstruction(bool* redrawScreen){
 							printInstruction("%04x - EXTS.l er%d\n", pc, Rd.idx);
 							printRegistersState();
 						}break;
+						default:{
+							return 1;
+						} break;
 
 					}
 				}break;
@@ -1131,6 +1177,9 @@ int runNextInstruction(bool* redrawScreen){
 							printInstruction("%04x - SUB.l ER%d, ER%d\n", pc, Rs.idx,  Rd.idx); 
 							printRegistersState();
 						}break;
+						default:{
+							return 1;
+						} break;
 
 					}
 				}break;
@@ -1185,6 +1234,9 @@ int runNextInstruction(bool* redrawScreen){
 							printInstruction("%04x - DEC.l #2, ER%d\n", pc, Rd.idx);
 							printRegistersState();
 						}break;
+						default:{
+							return 1;
+						} break;
 					}
 				}break;
 				case 0xC:{ // CMP.b Rs, Rd
@@ -1231,8 +1283,14 @@ int runNextInstruction(bool* redrawScreen){
 							printInstruction("%04x - CMP.l ER%d, ER%d\n", pc, Rs.idx,  Rd.idx); 
 							printRegistersState();
 						}break;
+						default:{
+							return 1;
+						} break;
 					}
 				}break;
+				default:{
+					return 1;
+				} break;
 			}
 		}break;
 
@@ -1362,6 +1420,9 @@ int runNextInstruction(bool* redrawScreen){
 						pc += disp;
 					}
 				}break;
+				default:{
+					return 1;
+				} break;
 			}
 		}break;
 		case 0x5:{
@@ -1583,6 +1644,9 @@ int runNextInstruction(bool* redrawScreen){
 							}
 
 						}break;
+						default:{
+							return 1;
+						} break;
 					}				
 				}break;
 				case 0x9:{ // JMP @ERn
@@ -1626,6 +1690,9 @@ int runNextInstruction(bool* redrawScreen){
 				case 0xF:{ // JSR @@aa:24 - UNUSED IN THE ROM, left unimplemented.
 					printInstruction("%04x - ????\n", pc);
 				}break;
+				default:{
+					return 1;
+				} break;
 
 			}
 		}break;
@@ -1789,6 +1856,9 @@ int runNextInstruction(bool* redrawScreen){
 							printRegistersState();
 
 						}break;
+						default:{
+							return 1;
+						} break;
 					}
 					pc+=2;
 
@@ -1823,6 +1893,9 @@ int runNextInstruction(bool* redrawScreen){
 							printRegistersState();
 
 						}break;
+						default:{
+							return 1;
+						} break;
 					}
 					pc+=2;
 
@@ -1951,6 +2024,9 @@ int runNextInstruction(bool* redrawScreen){
 
 
 				}break;
+				default:{
+					return 1;
+				} break;
 			}
 		}break;
 		case 0x7:{
@@ -2067,6 +2143,9 @@ int runNextInstruction(bool* redrawScreen){
 							*Rd.ptr = newValue;
 							printInstruction("%04x - AND.w 0x%x,%c%d\n", pc, cd, Rd.loOrHiReg,  Rd.idx); 
 						}break;
+						default:{
+							return 1;
+						} break;
 					}
 					printRegistersState();
 					pc+=2;
@@ -2112,6 +2191,9 @@ int runNextInstruction(bool* redrawScreen){
 							*Rd.ptr = newValue;
 							printInstruction("%04x - AND.l 0x%04x, ER%d\n", pc, cdef,  Rd.idx); 
 						}break;
+						default:{
+							return 1;
+						} break;
 					}
 					printRegistersState();
 					pc+=4;
@@ -2133,6 +2215,9 @@ int runNextInstruction(bool* redrawScreen){
 							pc+=2;
 
 						}break;
+						default:{
+							return 1;
+						} break;
 
 					}
 
@@ -2148,6 +2233,9 @@ int runNextInstruction(bool* redrawScreen){
 								printInstruction("%04x - BTST\n", pc);
 								return 1; // UNIMPLEMENTED
 							}break;
+							default:{
+								return 1;
+							} break;
 						}
 					}else if (cH == 0x7){
 						uint8_t mostSignificantBit = dH >> 7;
@@ -2186,6 +2274,9 @@ int runNextInstruction(bool* redrawScreen){
 									flags.C =  getMemory8(address) & (1 << bitToLoad);
 								}
 							}break;
+							default:{
+								return 1;
+							} break;
 						}
 
 
@@ -2236,6 +2327,9 @@ int runNextInstruction(bool* redrawScreen){
 							}
 							printInstruction("%04x - BST #%d, @ER%d\n", pc, bitToSet, Rd.idx);
 						}break;
+						default:{
+							return 1;
+						} break;
 					}
 					printMemory(*Rd.ptr, 1);
 					printRegistersState();
@@ -2280,9 +2374,15 @@ int runNextInstruction(bool* redrawScreen){
 						case 0x67:{ // BST - Unused in the ROM
 							return 1;
 						} break;
+						default:{
+							return 1;
+						} break;
 					}
 					printMemory(address, 1);
 					pc+=2;
+				} break;
+				default:{
+					return 1;
 				} break;
 			}
 		}break;

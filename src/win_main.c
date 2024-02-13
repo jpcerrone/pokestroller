@@ -132,7 +132,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 				}
 
 			}
-			runNextInstruction(&redrawScreen);
+			bool error = runNextInstruction(&redrawScreen);
+			if(error){
+				walkerRunning = false;
+			}
 			if ((cycleCount % 10000) == 0){ // Draw once every 10K cycles for now
 				fillVideoBuffer(bitMapMemory);
 				StretchDIBits(windowDeviceContext, 0, 0, screenRes.width, screenRes.height, 0, 0, nativeRes.width, nativeRes.height, bitMapMemory, &bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
