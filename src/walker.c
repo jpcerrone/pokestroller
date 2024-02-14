@@ -1105,11 +1105,31 @@ if (pc == 0x336){ // Factory Tests
 							printInstruction("%04x - EXTU.l er%d\n", pc, Rd.idx);
 							printRegistersState();
 						}break;
-						case 0x8:
-						case 0x9:
-						case 0xB:{
-							printInstruction("%04x - NEG\n", pc);
-							return 1; // UNIMPLEMENTED
+						case 0x8:{ // NEG.b Rd -- TODO: Untested
+							struct RegRef8 Rd = getRegRef8(bL);
+
+							setFlagsSUB(0, *Rd.ptr, 8);
+							if (*Rd.ptr != 0x80){
+								*Rd.ptr = (int8_t)0 - (int8_t)*Rd.ptr;
+							}
+							printInstruction("%04x - NEG.b r%d%c\n", pc, Rd.idx, Rd.loOrHiReg); 
+							printRegistersState();
+
+						} break;
+						case 0x9:{ // NEG.w Rd
+							struct RegRef16 Rd = getRegRef16(bL);
+
+							setFlagsSUB(0, *Rd.ptr, 16);
+							if (*Rd.ptr != 0x8000){
+								*Rd.ptr = (int16_t)0 - (int16_t)*Rd.ptr;
+							}
+							printInstruction("%04x - NEG.w %c%d\n", pc, Rd.loOrHiReg, Rd.idx); 
+							printRegistersState();
+
+						} break;
+						case 0xB:{ // NEG.l Rd
+							printInstruction("%04x - NEG.l\n", pc);
+							return 1; // Unused in the ROM
 						}break;
 						case 0xD:{ // EXTS.w Rd
 							struct RegRef16 Rd = getRegRef16(bL);
