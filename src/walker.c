@@ -307,33 +307,46 @@ static const uint8_t RE = 0x40; // Reception Enabled
 static int pc;
 static int instructionsToStep;
 
+
+void setKeys(bool enter, bool left, bool right){
+	uint8_t enterDown = enter ? (1<<0) : 0;
+	uint8_t leftDown = left ? (1<<1) : 0;
+	uint8_t rightDown = right ? (1<<2) : 0;
+	uint8_t value = enterDown | leftDown | rightDown;
+	setMemory8(0xffde, value);
+}
+
 int runNextInstruction(bool* redrawScreen){
-	// Skip certain instructions
-	if (pc == 0x336){ // Factory Tests
-		pc += 4;
-		printInstruction("SKIP 0336 jsr factoryTestPerformIfNeeded:24\n");
-		return 0;
-	} if (pc == 0x350){ // Check battery
-		pc += 4;
-		printInstruction("SKIP 350 jsr checkBatteryForBelowGivenLevel:24\n");
-		*RL[0] = 0;
-		return 0;
+// Skip certain instructions
+if (pc == 0x336){ // Factory Tests
+	pc += 4;
+	printInstruction("SKIP 0336 jsr factoryTestPerformIfNeeded:24\n");
+	return 0;
+} if (pc == 0x350){ // Check battery
+	pc += 4;
+	printInstruction("SKIP 350 jsr checkBatteryForBelowGivenLevel:24\n");
+	*RL[0] = 0;
+	return 0;
 	}
+	/*
 	if (pc == 0x36e){ // Set RTC
 		pc += 4;
 		printInstruction("SKIP 36E jsr delaySomewhatAndThenSetTheRtc:24\n");
 		return 0;
 	}
+	*/
+	/*
 	if (pc == 0x9c40){ // Force middle key
 		printInstruction("0x9c40 force middle key\n");
 		setMemory8(0xF79A, 0x2);
 	}
+	*/
 	if (pc == 0x0880){ // Skip IR stuff for now
 		pc = 0x082c;
 		printInstruction("0x0880 Skip IR stuff for now\n");
 		return 0;
 	}if (pc == 0x08d6){ // Skip IR stuff for now
-		pc = 0xba76;
+		pc = 0x0a74;
 		printInstruction("0x0886 Skip IR stuff for now\n");
 		return 0;
 	}
@@ -368,8 +381,8 @@ int runNextInstruction(bool* redrawScreen){
 	uint8_t fH = (f >> 4) & 0xF;
 	uint8_t fL = f & 0xF;
 
-	uint32_t cdef = cd << 16 | ef;
-	if (pc == 0x7356) { // Breakpoint for debugging
+	uint32_t cdef = cd << 16 | ef;                     
+	if (pc == 0x7882) { // Breakpoint for debugging
 		int x = 3;
 	}
 	switch(aH){

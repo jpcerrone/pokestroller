@@ -102,6 +102,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 		bool redrawScreen = false;
 		// mode = RUN;
 		int cycleCount = 0;
+		bool enter = 0;
+		bool left = 0;
+		bool right = 0;
 		while (walkerRunning) {
 			// Process Messages
 			MSG msg = {0};
@@ -112,16 +115,27 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 				switch (msg.message) {
 					case WM_KEYDOWN: {
 						bool wasDown = msg.lParam & (1 << 30);
-						if (!wasDown) {
-							// Handle keys here later
-							/*
-							if (key == VK_NUMPAD9) {
-								newInput.button9 = true;
-							}                    
-							*/
+						if (key == VK_SPACE) {
+							enter = true;
 						}
-
+						if (key == 'Z') {
+							left = true;
+						}
+						if (key == 'X') {
+							right = true;
+						}                    
 					} break;
+					case WM_KEYUP: {
+						if (key == VK_SPACE) {
+							enter = false;
+						}
+						if (key == 'Z') {
+							left = false;
+						}
+						if (key == 'X') {
+							right = false;
+						}
+					}break;
 					case WM_QUIT: {
 						walkerRunning = false;
 					} break;
@@ -132,6 +146,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 				}
 
 			}
+			setKeys(enter, left, right);
 			bool error = runNextInstruction(&redrawScreen);
 			if(error){
 				walkerRunning = false;

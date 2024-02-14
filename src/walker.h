@@ -88,3 +88,4 @@ static bool shouldRedrawScreen;
 void initWalker();
 int runNextInstruction(bool* redrawScreen);
 void fillVideoBuffer(uint32_t* videoBuffer);
+void setKeys(bool enter, bool left, bool right);
