@@ -26,14 +26,21 @@ uint8_t clearBit8(uint8_t operand, int bit){
 static int PORT1 = 0xFFD4;
 static int PORT9 = 0xFFDC;
 
-// General purpose registers
-static uint32_t* ER[8];
-static uint16_t* R[8];
-static uint16_t* E[8];
-static uint8_t* RL[8];
-static uint8_t* RH[8];
+// Timers
+#define TMB_AUTORELOAD (1<<7)
+#define TMB_COUNTING (1<<6)
+struct TimerB_t{
+	bool on;
+	uint8_t TLBvalue;
+	uint8_t* TMB1;
+	uint8_t* TCB1;
+};
+static struct TimerB_t TimerB;
+#define VECTOR_TIMER_B1 0x06fa
 
-static uint32_t* SP;
+static uint8_t* CKSTPR1; // Clock halt register 1
+#define TB1CKSTP (1<<2) /* Timer B1 Module Standby */
+
 // CCR Condition Code Register
 // I UI H U N Z V C
 struct Flags{
@@ -47,6 +54,24 @@ struct Flags{
 	bool C; // Carry flag
 };	
 static struct Flags flags;
+
+// Interrupts
+static uint8_t* IRQ_IENR2; // Interrupt enable register 2
+#define IENTB1 (1<<2) /* Timer B1 Interrupt Request Enable */
+static uint8_t* IRQ_IRR2; // Interrupt flag register 2
+#define IRRTB1 (1<<2) /* Timer B1 Interrupt Request Flag */
+static uint16_t interruptSavedAddress;
+static struct Flags interruptSavedFlags;
+
+// General purpose registers
+static uint32_t* ER[8];
+static uint16_t* R[8];
+static uint16_t* E[8];
+static uint8_t* RL[8];
+static uint8_t* RH[8];
+
+static uint32_t* SP;
+
 
 void setFlags(uint8_t value){
 	flags.C = value & (1<<0);
@@ -304,7 +329,7 @@ static const uint8_t TEND = (1 << 3); // Transmit End
 static const uint8_t TE = 0x80; // Transmission Enabled
 static const uint8_t RE = 0x40; // Reception Enabled
 
-static int pc;
+static uint16_t pc;
 static int instructionsToStep;
 
 
@@ -317,39 +342,30 @@ void setKeys(bool enter, bool left, bool right){
 }
 
 int runNextInstruction(bool* redrawScreen){
-// Skip certain instructions
-if (pc == 0x336){ // Factory Tests
-	pc += 4;
-	printInstruction("SKIP 0336 jsr factoryTestPerformIfNeeded:24\n");
-	return 0;
-} if (pc == 0x350){ // Check battery
-	pc += 4;
-	printInstruction("SKIP 350 jsr checkBatteryForBelowGivenLevel:24\n");
-	*RL[0] = 0;
-	return 0;
-	}
-	/*
-	if (pc == 0x36e){ // Set RTC
+	// Skip certain instructions
+	if (pc == 0x336){ // Factory Tests
 		pc += 4;
-		printInstruction("SKIP 36E jsr delaySomewhatAndThenSetTheRtc:24\n");
+		printInstruction("SKIP 0336 jsr factoryTestPerformIfNeeded:24\n");
+		return 0;
+	} if (pc == 0x350){ // Check battery
+		pc += 4;
+		printInstruction("SKIP 350 jsr checkBatteryForBelowGivenLevel:24\n");
+		*RL[0] = 0;
 		return 0;
 	}
-	*/
-	/*
-	if (pc == 0x9c40){ // Force middle key
-		printInstruction("0x9c40 force middle key\n");
-		setMemory8(0xF79A, 0x2);
-	}
-	*/
-	if (pc == 0x0880){ // Skip IR stuff for now
-		pc = 0x082c;
+	if (pc == 0x0822){ // Skip IR stuff for now
+		pc = 0x0828;
 		printInstruction("0x0880 Skip IR stuff for now\n");
 		return 0;
-	}if (pc == 0x08d6){ // Skip IR stuff for now
+
+	}
+	/*
+	if (pc == 0x08d6){ // Skip IR stuff for now
 		pc = 0x0a74;
 		printInstruction("0x0886 Skip IR stuff for now\n");
 		return 0;
 	}
+	*/
 
 	uint16_t* currentInstruction = (uint16_t*)(memory + pc);
 	// IMPROVEMENT: maybe just use pointers to the ROM, left this way cause it seems cleaner
@@ -382,7 +398,7 @@ if (pc == 0x336){ // Factory Tests
 	uint8_t fL = f & 0xF;
 
 	uint32_t cdef = cd << 16 | ef;                     
-	if (pc == 0x7882) { // Breakpoint for debugging
+	if (pc == 0x08da) { // Breakpoint for debugging
 		int x = 3;
 	}
 	switch(aH){
@@ -1535,8 +1551,9 @@ if (pc == 0x336){ // Factory Tests
 					printRegistersState();
 				}break;
 				case 0x6:{
+					pc = interruptSavedAddress - 2; // -2?
+					flags = interruptSavedFlags;
 					printInstruction("%04x - RTE\n", pc);
-					return 1; // UNIMPLEMENTED
 				}break;
 				case 0x7:{
 					printInstruction("%04x - TRAPA\n", pc);
@@ -1882,6 +1899,8 @@ if (pc == 0x336){ // Factory Tests
 							if(address == 0xfff0eb){ // SSSTDR
 								*SSU.SSSR = clearBit8(*SSU.SSSR, 2); // TDRE
 								*SSU.SSSR = clearBit8(*SSU.SSSR, 3); // TEND
+							} else if(address == 0xfff0d1){ // TMRB_TCB1_TLB1
+								TimerB.TLBvalue = value; // TODO (if handling custom ROMs) add these checks in the other MOVs 
 							}
 
 							printInstruction("%04x - MOV.b R%d%c,@%x:16 \n", pc, Rs.idx, Rs.loOrHiReg, address); 
@@ -2724,7 +2743,36 @@ if (pc == 0x336){ // Factory Tests
 		//lcd.currentColumn = 0;
 		//lcd.currentPage = 0;
 	}
+
+	// Timer handling
+	// Note: assumming timers still count during exception handling, I haven't seen any info related to that in the H800 datasheets
+	if (TimerB.on){
+		uint8_t cyclesEllapsed = 2;
+		for(uint8_t i = 0; i < cyclesEllapsed; i++){
+			if(++(*TimerB.TCB1) == 0){
+				*IRQ_IRR2 |= IRRTB1;
+				*TimerB.TCB1 = TimerB.TLBvalue;
+			}
+		}
+	}
+	// have to do this so that we don't count the instructions from the first cycle the timer is on
+	// since it should count in parallell to CPU execution
+	TimerB.on = (*CKSTPR1 & TB1CKSTP) && (*TimerB.TMB1 & TMB_COUNTING); 	
+
 	pc+=2;
+	
+	// Interrupt handling
+	// Note: Remember to check priorities when adding interrupt types here
+	if (!flags.I){
+		if ((*IRQ_IRR2 & IRRTB1) && (*IRQ_IENR2 & IENTB1)){
+			interruptSavedAddress = pc;
+			interruptSavedFlags = flags;
+			flags.I = true;
+			// TODO handle remainder
+			pc = VECTOR_TIMER_B1;
+		}
+	}
+	// TODO: this doesnt follow this rule: 3.8.4 Conflict between Interrupt Generation and Disabling
 	return 0;	
 }
 
@@ -2800,5 +2848,23 @@ void initWalker(){
 	flags = (struct Flags){0};
 	printRegistersState();
 
+	// Init Timers
+	TimerB.on = false;
+	TimerB.TMB1 = &memory[0xF0D0];
+	setMemory8(0xF0F0, 0b00111000); 
+	TimerB.TCB1 = &memory[0xF0D1];
+	setMemory8(0xF0F0, 0); 
+	TimerB.TLBvalue = 0;
+	
+	// Init Clock halt registers
+	CKSTPR1 = &memory[0xfffa];	
+	setMemory8(0xFFFA, 0b00000011); 
+
+	// Init Interrupt stuff
+	IRQ_IENR2 = &memory[0xfff4];
+	*IRQ_IENR2 = 0;
+	IRQ_IRR2 = &memory[0xfff7];
+	*IRQ_IRR2 = 0;
+	interruptSavedAddress = 0;
 	pc = entry;
 }
