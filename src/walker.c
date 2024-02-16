@@ -19,6 +19,8 @@ enum Mode{
 static enum Mode mode;
 */
 
+static uint64_t subClockCyclesEllapsed;
+
 uint8_t clearBit8(uint8_t operand, int bit){
 	return operand & ~(1 << bit);			
 }
@@ -31,6 +33,7 @@ static int PORT9 = 0xFFDC;
 #define TMB_COUNTING (1<<6)
 struct TimerB_t{
 	bool on;
+	uint8_t clockCount;
 	uint8_t TLBvalue;
 	uint8_t* TMB1;
 	uint8_t* TCB1;
@@ -71,7 +74,6 @@ static uint8_t* RL[8];
 static uint8_t* RH[8];
 
 static uint32_t* SP;
-
 
 void setFlags(uint8_t value){
 	flags.C = value & (1<<0);
@@ -341,7 +343,24 @@ void setKeys(bool enter, bool left, bool right){
 	setMemory8(0xffde, value);
 }
 
-int runNextInstruction(bool* redrawScreen){
+void runSubClock(){
+	// Timer handling
+	if (TimerB.on && ((subClockCyclesEllapsed % 256) == 0)){ // TODO(custom ROMs): parameterize frequency
+		TimerB.clockCount = (TimerB.clockCount + 1); 
+		if (TimerB.clockCount == 0)
+		{
+			if(++(*TimerB.TCB1) == 0){
+				*IRQ_IRR2 |= IRRTB1;
+				*TimerB.TCB1 = TimerB.TLBvalue;
+			}
+		}
+	}
+	// have to do this so that we don't count the instructions from the first cycle the timer is on
+	// since it should count in parallell to CPU execution
+	TimerB.on = (*CKSTPR1 & TB1CKSTP) && (*TimerB.TMB1 & TMB_COUNTING);
+}
+
+int runNextInstruction(bool* redrawScreen, uint64_t* cycleCount){
 	// Skip certain instructions
 	if (pc == 0x336){ // Factory Tests
 		pc += 4;
@@ -2394,22 +2413,12 @@ int runNextInstruction(bool* redrawScreen){
 							int bitToSet = dH;
 							printInstruction("%04x - BSET #%d, @0x%x:8\n", pc, bitToSet, address);
 							setMemory8(address, getMemory8(address) | (1 << bitToSet));
-							/*
-							if((address == PORT1) && ((1 << bitToSet) == LCD_PIN)){ // TODO: check other BCLR may hold the data pin address too (unlikely)
-								*redrawScreen = true;
-							}
-							*/
 						}break;
 						case 0x60:{ // BSET Rn, @aa:8
 							struct RegRef8 Rn = getRegRef8(dH);		
 							int bitToSet = *Rn.ptr;
 							printInstruction("%04x - BSET r%d%c, @0x%x:8\n", pc, Rn.idx, Rn.loOrHiReg, address);
 							setMemory8(address, getMemory8(address) | (1 << bitToSet));
-							/*
-							if((address == PORT1) && ((1 << bitToSet) == LCD_PIN)){
-								*redrawScreen = true;
-							}
-							*/
 						}break;
 						case 0x72:{ // BCLR #xx:3, @aa:8
 							int bitToClear = dH;
@@ -2744,35 +2753,39 @@ int runNextInstruction(bool* redrawScreen){
 		//lcd.currentPage = 0;
 	}
 
-	// Timer handling
-	// Note: assumming timers still count during exception handling, I haven't seen any info related to that in the H800 datasheets
-	if (TimerB.on){
-		uint8_t cyclesEllapsed = 2;
-		for(uint8_t i = 0; i < cyclesEllapsed; i++){
-			if(++(*TimerB.TCB1) == 0){
-				*IRQ_IRR2 |= IRRTB1;
-				*TimerB.TCB1 = TimerB.TLBvalue;
-			}
-		}
-	}
-	// have to do this so that we don't count the instructions from the first cycle the timer is on
-	// since it should count in parallell to CPU execution
-	TimerB.on = (*CKSTPR1 & TB1CKSTP) && (*TimerB.TMB1 & TMB_COUNTING); 	
+	 	
 
 	pc+=2;
 	
 	// Interrupt handling
 	// Note: Remember to check priorities when adding interrupt types here
+	// TODO: this doesnt follow this rule: 3.8.4 Conflict between Interrupt Generation and Disabling
 	if (!flags.I){
 		if ((*IRQ_IRR2 & IRRTB1) && (*IRQ_IENR2 & IENTB1)){
 			interruptSavedAddress = pc;
 			interruptSavedFlags = flags;
 			flags.I = true;
-			// TODO handle remainder
 			pc = VECTOR_TIMER_B1;
 		}
 	}
-	// TODO: this doesnt follow this rule: 3.8.4 Conflict between Interrupt Generation and Disabling
+
+	// Clock handling
+	uint32_t cyclesEllapsed = 2; // TODO: determine based on instruction type
+	for(uint32_t i = 0; i < cyclesEllapsed; i++){
+		*cycleCount += 1;
+		if((*cycleCount % 2048) == 0){  // Draw once every 2048 cycles for now
+			*redrawScreen = true;
+		}
+
+
+		if ((*cycleCount % (SYSTEM_CLOCK_CYCLES_PER_SECOND / SUB_CLOCK_CYCLES_PER_SECOND)) == 0){ 
+			subClockCyclesEllapsed += 1;
+			runSubClock();
+		}
+	}
+	
+	// TODO: transfer clock is clk / 4 (SSU)
+	
 	return 0;	
 }
 
@@ -2780,6 +2793,7 @@ void initWalker(){
 	int entry = 0x02C4;
 	//int entry = 0x0;
 
+	uint64_t subClockCyclesEllapsed = 0;
 	// 0x0000 - 0xBFFF - ROM 
 	// 0xF020 - 0xF0FF - MMIO
 	// 0xF780 - 0xFF7F - RAM 
@@ -2855,7 +2869,8 @@ void initWalker(){
 	TimerB.TCB1 = &memory[0xF0D1];
 	setMemory8(0xF0F0, 0); 
 	TimerB.TLBvalue = 0;
-	
+	TimerB.clockCount = 0;
+
 	// Init Clock halt registers
 	CKSTPR1 = &memory[0xfffa];	
 	setMemory8(0xFFFA, 0b00000011); 

@@ -101,10 +101,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 		walkerRunning = true;
 		bool redrawScreen = false;
 		// mode = RUN;
-		int cycleCount = 0;
 		bool enter = 0;
 		bool left = 0;
 		bool right = 0;
+		uint64_t cycleCount = 0;
 		while (walkerRunning) {
 			// Process Messages
 			MSG msg = {0};
@@ -147,16 +147,15 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
 			}
 			setKeys(enter, left, right);
-			bool error = runNextInstruction(&redrawScreen);
+			bool error = runNextInstruction(&redrawScreen, &cycleCount);
 			if(error){
 				walkerRunning = false;
 			}
-			if ((cycleCount % 10000) == 0){ // Draw once every 10K cycles for now
+			if (redrawScreen){ 
 				fillVideoBuffer(bitMapMemory);
 				StretchDIBits(windowDeviceContext, 0, 0, screenRes.width, screenRes.height, 0, 0, nativeRes.width, nativeRes.height, bitMapMemory, &bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
 				redrawScreen = false;
 			}
-			cycleCount++;
 		}
 	}
 	// TODO: migrate stepping code

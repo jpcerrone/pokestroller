@@ -2,6 +2,9 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#define SYSTEM_CLOCK_CYCLES_PER_SECOND 3686400 /* 3.6864 MHz */
+#define SUB_CLOCK_CYCLES_PER_SECOND 32768 /* 32.768 KHz */
+
 struct RegRef8{
 	 int idx;
 	 char loOrHiReg;
@@ -86,6 +89,6 @@ struct Lcd_t{
 
 static bool shouldRedrawScreen;
 void initWalker();
-int runNextInstruction(bool* redrawScreen);
+int runNextInstruction(bool* redrawScreen, uint64_t* cycleCount);
 void fillVideoBuffer(uint32_t* videoBuffer);
 void setKeys(bool enter, bool left, bool right);
