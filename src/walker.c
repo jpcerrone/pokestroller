@@ -359,8 +359,8 @@ static int instructionsToStep;
 
 void setKeys(bool enter, bool left, bool right){
 	uint8_t enterDown = enter ? (1<<0) : 0;
-	uint8_t leftDown = left ? (1<<1) : 0;
-	uint8_t rightDown = right ? (1<<2) : 0;
+	uint8_t leftDown = left ? (1<<2) : 0;
+	uint8_t rightDown = right ? (1<<4) : 0;
 	uint8_t value = enterDown | leftDown | rightDown;
 	setMemory8(0xffde, value);
 }
