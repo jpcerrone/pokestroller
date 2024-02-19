@@ -33,16 +33,38 @@ static int PORT9 = 0xFFDC;
 #define TMB_COUNTING (1<<6)
 struct TimerB_t{
 	bool on;
-	uint8_t clockCount;
 	uint8_t TLBvalue;
 	uint8_t* TMB1;
 	uint8_t* TCB1;
 };
 static struct TimerB_t TimerB;
 #define VECTOR_TIMER_B1 0x06fa
+#define VECTOR_TIMER_W 0x3a4a
+
+#define CTS (1<<7)
+#define CCLR (1<<7)
+struct TimerW_t{
+	bool on;
+	uint8_t* TMRW;
+	uint8_t* TCRW;
+	uint8_t* TIERW;
+	uint8_t* TSRW;
+	uint8_t* TIOR0;
+	uint8_t* TIOR1;
+	uint16_t* TCNT;
+	uint16_t* GRA;
+	uint16_t* GRB;
+	uint16_t* GRC;
+	uint16_t* GRD;
+};
+
+static struct TimerW_t TimerW;
 
 static uint8_t* CKSTPR1; // Clock halt register 1
 #define TB1CKSTP (1<<2) /* Timer B1 Module Standby */
+
+static uint8_t* CKSTPR2; // Clock halt register 2
+#define TWCKSTP (1<<6) /* Timer W Module Standby */
 
 // CCR Condition Code Register
 // I UI H U N Z V C
@@ -346,18 +368,31 @@ void setKeys(bool enter, bool left, bool right){
 void runSubClock(){
 	// Timer handling
 	if (TimerB.on && ((subClockCyclesEllapsed % 256) == 0)){ // TODO(custom ROMs): parameterize frequency
-		TimerB.clockCount = (TimerB.clockCount + 1); 
-		if (TimerB.clockCount == 0)
-		{
-			if(++(*TimerB.TCB1) == 0){
-				*IRQ_IRR2 |= IRRTB1;
-				*TimerB.TCB1 = TimerB.TLBvalue;
+		if(++(*TimerB.TCB1) == 0){
+			*IRQ_IRR2 |= IRRTB1;
+			*TimerB.TCB1 = TimerB.TLBvalue;
+		}
+	}
+	if (TimerW.on){ // Count every subclock
+		*TimerW.TCNT += 1;
+		if ((*TimerW.TCNT == *TimerW.GRA) && (*TimerW.TCRW & CCLR)){
+			*TimerW.TCNT = 0;
+			*TimerW.TSRW |= 0x1; // IMFA
+			if (*TimerW.TIERW & 0x1){ // IMIEA - Interrupt enabled A
+				if (!flags.I){
+					interruptSavedAddress = pc;
+					interruptSavedFlags = flags;
+					flags.I = true;
+					pc = VECTOR_TIMER_W;
+				}
 			}
 		}
 	}
+
 	// have to do this so that we don't count the instructions from the first cycle the timer is on
 	// since it should count in parallell to CPU execution
 	TimerB.on = (*CKSTPR1 & TB1CKSTP) && (*TimerB.TMB1 & TMB_COUNTING);
+	TimerW.on = (*CKSTPR2 & TWCKSTP) && (*TimerW.TMRW & CTS);
 }
 
 int runNextInstruction(bool* redrawScreen, uint64_t* cycleCount){
@@ -372,12 +407,14 @@ int runNextInstruction(bool* redrawScreen, uint64_t* cycleCount){
 		*RL[0] = 0;
 		return 0;
 	}
+	/*
 	if (pc == 0x0822){ // Skip IR stuff for now
 		pc = 0x0828;
 		printInstruction("0x0880 Skip IR stuff for now\n");
 		return 0;
 
 	}
+	*/
 	/*
 	if (pc == 0x08d6){ // Skip IR stuff for now
 		pc = 0x0a74;
@@ -417,7 +454,8 @@ int runNextInstruction(bool* redrawScreen, uint64_t* cycleCount){
 	uint8_t fL = f & 0xF;
 
 	uint32_t cdef = cd << 16 | ef;                     
-	if (pc == 0x08da) { // Breakpoint for debugging
+	if (pc == 0x79bc) { // Breakpoint for debugging
+		setMemory8(0xf7b5, 0x1); // common_bit_flags - RTC 1/4 second, without this the normal mode loop doesnt draw
 		int x = 3;
 	}
 	switch(aH){
@@ -2865,15 +2903,43 @@ void initWalker(){
 	// Init Timers
 	TimerB.on = false;
 	TimerB.TMB1 = &memory[0xF0D0];
-	setMemory8(0xF0F0, 0b00111000); 
+	setMemory8(0xf0d0, 0b00111000); 
 	TimerB.TCB1 = &memory[0xF0D1];
-	setMemory8(0xF0F0, 0); 
+	setMemory8(0xf0d1, 0); 
 	TimerB.TLBvalue = 0;
-	TimerB.clockCount = 0;
+
+	memset(&TimerW, 0, sizeof(TimerW));
+	TimerW.TMRW = &memory[0xf0f0];
+	setMemory8(0xf0f0, 0b01001000); 
+	TimerW.TCRW = &memory[0xf0f1];
+	setMemory8(0xf0f1, 0);
+	TimerW.TIERW = &memory[0xf0f2];
+	setMemory8(0xf0f2, 0b01110000);
+	TimerW.TSRW = &memory[0xf0f3];
+	setMemory8(0xf0f3, 0b01110000);
+	TimerW.TIOR0 = &memory[0xf0f4];
+	setMemory8(0xf0f4, 0b10001000);
+	TimerW.TIOR1 = &memory[0xf0f5];
+	setMemory8(0xf0f5, 0b10001000);
+	TimerW.TCNT = (uint16_t*)&memory[0xf0f6];
+	setMemory16(0xf0f6, 0);
+	TimerW.GRA = (uint16_t*)&memory[0xf0f8];
+	setMemory16(0xf0f8, 0xffff);
+	TimerW.GRB = (uint16_t*)&memory[0xf0fa];
+	setMemory16(0xf0fa, 0xffff);
+	TimerW.GRC = (uint16_t*)&memory[0xf0fc];
+	setMemory16(0xf0fc, 0xffff);
+	/*
+	TimerW.GRD = (uint16_t*)&memory[0xf0fe];
+	setMemory8(0xf0fe, 0);
+	*/ // Unused in the ROM
 
 	// Init Clock halt registers
 	CKSTPR1 = &memory[0xfffa];	
 	setMemory8(0xFFFA, 0b00000011); 
+
+	CKSTPR2 = &memory[0xfffb];	
+	setMemory8(0xFFFA, 0b00000100);
 
 	// Init Interrupt stuff
 	IRQ_IENR2 = &memory[0xfff4];
