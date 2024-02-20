@@ -9,7 +9,7 @@
 #include <assert.h>
 
 #include "walker.h"
-
+#include "utils.c"
 /*
 enum Mode{
 	STEP,
@@ -456,6 +456,20 @@ int runNextInstruction(bool* redrawScreen, uint64_t* cycleCount){
 	uint32_t cdef = cd << 16 | ef;                     
 	if (pc == 0x79bc) { // Breakpoint for debugging
 		setMemory8(0xf7b5, 0x1); // common_bit_flags - RTC 1/4 second, without this the normal mode loop doesnt draw
+		int x = 3;
+	}
+	if (pc == 0x6a08) { // Breakpoint for debugging
+		/*
+		dumpArrayToFile(memory, MEM_SIZE, "mem_dump");
+		dumpArrayToFile(eeprom.memory, EEPROM_SIZE, "eeprom_dump");
+		*/
+		int x = 3;
+	}
+	if (pc == 0x6a0c) { // Breakpoint for debugging
+		/*
+		dumpArrayToFile(memory, MEM_SIZE, "mem_dump_after");
+		dumpArrayToFile(eeprom.memory, EEPROM_SIZE, "eeprom_dump_after");
+		*/
 		int x = 3;
 	}
 	switch(aH){
@@ -2621,7 +2635,7 @@ int runNextInstruction(bool* redrawScreen, uint64_t* cycleCount){
 
 					case EEPROM_GETTING_BYTES:{
 						*SSU.SSRDR = eeprom.memory[((eeprom.buffer.hiAddress << 8) | eeprom.buffer.loAddress) + eeprom.buffer.offset];
-					eeprom.buffer.offset  = (eeprom.buffer.offset + 1) % EEPROM_PAGE_SIZE;
+						eeprom.buffer.offset  = (eeprom.buffer.offset + 1);
 					} break;
 				}
 			}
@@ -2682,7 +2696,7 @@ int runNextInstruction(bool* redrawScreen, uint64_t* cycleCount){
 				assert(lcdMemIndex < LCD_MEM_SIZE);
 				lcd.memory[lcdMemIndex] = *SSU.SSTDR;	
 				if (lcd.currentByte == 1){
-					lcd.currentColumn = lcd.currentColumn + 1;
+					lcd.currentColumn = (lcd.currentColumn + 1);
 				}
 				lcd.currentByte = (lcd.currentByte + 1) % 2;
 			}
@@ -2811,7 +2825,7 @@ int runNextInstruction(bool* redrawScreen, uint64_t* cycleCount){
 	uint32_t cyclesEllapsed = 2; // TODO: determine based on instruction type
 	for(uint32_t i = 0; i < cyclesEllapsed; i++){
 		*cycleCount += 1;
-		if((*cycleCount % 2048) == 0){  // Draw once every 2048 cycles for now
+		if((*cycleCount % 32768) == 0){  // Draw once every 2048 cycles for now
 			*redrawScreen = true;
 		}
 
@@ -2836,12 +2850,12 @@ void initWalker(){
 	// 0xF020 - 0xF0FF - MMIO
 	// 0xF780 - 0xFF7F - RAM 
 	// 0xFF80 - 0xFFFF - MMIO
-	memory = malloc(64 * 1024);
-	memset(memory, 0, 64 * 1024);
+	memory = malloc(MEM_SIZE);
+	memset(memory, 0, MEM_SIZE);
 	
 	memset(&eeprom, 0, sizeof(eeprom));
-	eeprom.memory = malloc(64 * 1024);
-	memset(eeprom.memory, 0xFF, 64 * 1024);
+	eeprom.memory = malloc(EEPROM_SIZE);
+	memset(eeprom.memory, 0xFF, EEPROM_SIZE);
 
 #ifndef INIT_EEPROM
 	FILE *eepromFile = fopen("roms/eeprom.bin", "r");
@@ -2948,4 +2962,6 @@ void initWalker(){
 	*IRQ_IRR2 = 0;
 	interruptSavedAddress = 0;
 	pc = entry;
+	dumpArrayToFile(memory, MEM_SIZE, "mem_dump");
+	dumpArrayToFile(eeprom.memory, EEPROM_SIZE, "eeprom_dump");
 }

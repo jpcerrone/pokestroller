@@ -5,6 +5,9 @@
 #define SYSTEM_CLOCK_CYCLES_PER_SECOND 3686400 /* 3.6864 MHz */
 #define SUB_CLOCK_CYCLES_PER_SECOND 32768 /* 32.768 KHz */
 
+static const size_t MEM_SIZE = 64 * 1024;
+static const size_t EEPROM_SIZE = 64 * 1024;
+
 struct RegRef8{
 	 int idx;
 	 char loOrHiReg;
@@ -41,7 +44,7 @@ struct Eeprom_t{
 		uint8_t hiAddress;
 		uint8_t loAddress;
 		enum EEPROM_STATES state;
-		uint8_t offset;
+		uint16_t offset;
 	} buffer;
 };
 // --
