@@ -3,11 +3,21 @@
 
 #include <assert.h>
 #include <Windows.h>
+#include <stdio.h>
+
+#define DESIRED_FPS 60
 
 static HCURSOR cursor;
 WINDOWPLACEMENT g_wpPrev = { sizeof(g_wpPrev) };
 
 static bool walkerRunning;
+
+float getEllapsedSeconds(LARGE_INTEGER endPerformanceCount, LARGE_INTEGER startPerformanceCount, LARGE_INTEGER performanceFrequency) {
+	LARGE_INTEGER ellapsedMicroSeconds;
+	ellapsedMicroSeconds.QuadPart = endPerformanceCount.QuadPart - startPerformanceCount.QuadPart;
+	//ellapsedMicroSeconds.QuadPart *= 1000000;
+	return (float)ellapsedMicroSeconds.QuadPart / (float)performanceFrequency.QuadPart;
+}
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
@@ -37,6 +47,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 {
 	struct Vector2i nativeRes = { LCD_WIDTH, LCD_HEIGHT };
 	int scalingFactor = 4;
+
+	//MMRESULT canQueryEveryMs = timeBeginPeriod(1);
+	//assert(canQueryEveryMs == TIMERR_NOERROR);
 
 	struct Vector2i windowsScreenRes = {GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN)};
 	// This already considers Window's scaling factor (ie 125%).
@@ -105,6 +118,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 		bool left = 0;
 		bool right = 0;
 		uint64_t cycleCount = 0;
+		// Timing
+		LARGE_INTEGER performanceFrequency;
+		QueryPerformanceFrequency(&performanceFrequency);
+
+		LARGE_INTEGER startPerformanceCount;
+		QueryPerformanceCounter(&startPerformanceCount);
 		while (walkerRunning) {
 			// Process Messages
 			MSG msg = {0};
@@ -152,9 +171,30 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 				walkerRunning = false;
 			}
 			if (redrawScreen){ 
+				
+				redrawScreen = false;
+			}
+			if (cycleCount >= SYSTEM_CLOCK_CYCLES_PER_SECOND/DESIRED_FPS){
+				float desiredFrameTimeInS = 1.0f / DESIRED_FPS;
+				cycleCount -= SYSTEM_CLOCK_CYCLES_PER_SECOND/DESIRED_FPS;
+				LARGE_INTEGER endPerformanceCount;
+				QueryPerformanceCounter(&endPerformanceCount);
+				float elapsedSeconds = getEllapsedSeconds(endPerformanceCount, startPerformanceCount, performanceFrequency);
+				char str[20];
+				sprintf(str, "%f\n", elapsedSeconds);
+				OutputDebugStringA(str);
+				if (elapsedSeconds < desiredFrameTimeInS) {
+					DWORD timeToSleep = (DWORD)(1000.0f * (desiredFrameTimeInS - elapsedSeconds));
+					Sleep(timeToSleep);
+					QueryPerformanceCounter(&endPerformanceCount);
+
+				}
+				startPerformanceCount = endPerformanceCount;
 				fillVideoBuffer(bitMapMemory);
 				StretchDIBits(windowDeviceContext, 0, 0, screenRes.width, screenRes.height, 0, 0, nativeRes.width, nativeRes.height, bitMapMemory, &bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
-				redrawScreen = false;
+				QueryPerformanceCounter(&endPerformanceCount);
+				elapsedSeconds = getEllapsedSeconds(endPerformanceCount, startPerformanceCount, performanceFrequency);
+				startPerformanceCount = endPerformanceCount;
 			}
 		}
 	}

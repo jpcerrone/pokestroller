@@ -3,6 +3,7 @@
 #include <stdbool.h>
 
 #define SYSTEM_CLOCK_CYCLES_PER_SECOND 3686400 /* 3.6864 MHz */
+//#define SYSTEM_CLOCK_CYCLES_PER_SECOND 1843200/* 3.6864 MHz */
 #define SUB_CLOCK_CYCLES_PER_SECOND 32768 /* 32.768 KHz */
 
 static const size_t MEM_SIZE = 64 * 1024;
@@ -32,6 +33,7 @@ const static int EEPROM_PAGE_SIZE = 128;
 
 enum EEPROM_STATES{
 	EEPROM_EMPTY,
+	EEPROM_GETTING_STATUS_REGISTER,
 	EEPROM_GETTING_ADDRESS_HI,
 	EEPROM_GETTING_ADDRESS_LO,
 	EEPROM_GETTING_BYTES
@@ -45,6 +47,7 @@ struct Eeprom_t{
 		uint8_t loAddress;
 		enum EEPROM_STATES state;
 		uint16_t offset;
+		uint8_t progress; // goes from 0 to 7
 	} buffer;
 };
 // --

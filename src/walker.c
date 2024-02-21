@@ -465,7 +465,7 @@ int runNextInstruction(bool* redrawScreen, uint64_t* cycleCount){
 		*/
 		int x = 3;
 	}
-	if (pc == 0x6a0c) { // Breakpoint for debugging
+	if (pc == 0x55cc) { // Breakpoint for debugging
 		/*
 		dumpArrayToFile(memory, MEM_SIZE, "mem_dump_after");
 		dumpArrayToFile(eeprom.memory, EEPROM_SIZE, "eeprom_dump_after");
@@ -2587,208 +2587,7 @@ int runNextInstruction(bool* redrawScreen, uint64_t* cycleCount){
 	}
 
 	// SSU
-	if (~*SSU.SSER & TE){ // TE == 0
-		*SSU.SSSR |= TDRE; // Set TDRE
-	}
-
-	if ((*SSU.SSER & (TE | RE)) == (TE | RE)){ // Transmission and recieve enabled
-		if(~*SSU.SSSR & TDRE){ 
-			// Here we'll start the transmission that'll take 8 cycles. But for now it happens instantly.
-			// Accelerometer
-			if(~(getMemory8(PORT9)) & ACCEL_PIN){ // TODO: find more readable way to deal with pins
-				switch(accel.buffer.state){
-					case ACCEL_GETTING_ADDRESS:{
-						accel.buffer.address = *SSU.SSTDR & 0x0F; // The "&" removes 0x80 (RW flag, not part of the address)
-						accel.buffer.offset = 0;
-						accel.buffer.state = ACCEL_GETTING_BYTES;
-					}break;
-					case ACCEL_GETTING_BYTES:{
-						*SSU.SSRDR = accel.memory[(accel.buffer.address) + accel.buffer.offset]; 
-						accel.buffer.offset += 1;
-					}break;
-				}
-			}
-			// EEPROM
-			if(~(getMemory8(PORT1)) & EEPROM_PIN){ 
-				switch(eeprom.buffer.state){
-					case EEPROM_EMPTY:{
-						switch(*SSU.SSTDR){
-							case 0x5:{ // RDSR - read status register
-								*SSU.SSRDR = eeprom.status; 
-							} break;
-							case 0x3:{ // READ - read from memory
-								eeprom.buffer.state = EEPROM_GETTING_ADDRESS_HI;
-							} break;
-						}
-
-					} break;
-					case EEPROM_GETTING_ADDRESS_HI:{
-						eeprom.buffer.hiAddress = *SSU.SSTDR;
-						eeprom.buffer.state = EEPROM_GETTING_ADDRESS_LO;
-
-					} break;
-
-					case EEPROM_GETTING_ADDRESS_LO:{
-						eeprom.buffer.loAddress = *SSU.SSTDR;
-						eeprom.buffer.state = EEPROM_GETTING_BYTES;
-					} break;
-
-					case EEPROM_GETTING_BYTES:{
-						*SSU.SSRDR = eeprom.memory[((eeprom.buffer.hiAddress << 8) | eeprom.buffer.loAddress) + eeprom.buffer.offset];
-						eeprom.buffer.offset  = (eeprom.buffer.offset + 1);
-					} break;
-				}
-			}
-			*SSU.SSSR = *SSU.SSSR | RDRF; 
-			*SSU.SSSR = *SSU.SSSR | TDRE; 
-			*SSU.SSSR = *SSU.SSSR | TEND; 
-		}
-	}
-	else if (*SSU.SSER & TE){ 
-		if(~*SSU.SSSR & TDRE){ 
-			// Accelerometer
-			if(~(getMemory8(PORT9)) & ACCEL_PIN){ 
-				switch(accel.buffer.state){
-					case ACCEL_GETTING_ADDRESS:{
-						accel.buffer.address = *SSU.SSTDR;
-						accel.buffer.state = ACCEL_GETTING_BYTES;
-					}break;
-					case ACCEL_GETTING_BYTES:{
-						accel.memory[accel.buffer.address] = *SSU.SSTDR;
-					}break;
-				}
-			}
-			// EEPROM
-			if(~(getMemory8(PORT1)) & EEPROM_PIN){ 
-				switch (eeprom.buffer.state) {
-					case EEPROM_EMPTY:{
-						switch(*SSU.SSTDR){
-							case 0x6:{ // WREN - write enable
-								eeprom.status |= 0x2; // WEL - write enable latch. Note: I dont see any WRDI or WRSR instructions in the ROM that disable this latch, could cause issues later on
-								// TODO: maybe not even needed, see if removing it changes anything
-							}break;
-							case 0x2: { // WRITE
-								eeprom.buffer.state = EEPROM_GETTING_ADDRESS_HI;
-							}break;
-						}
-
-					} break;
-					case EEPROM_GETTING_ADDRESS_HI:{
-						eeprom.buffer.hiAddress = *SSU.SSTDR;
-						eeprom.buffer.state = EEPROM_GETTING_ADDRESS_LO;
-					} break;
-
-					case EEPROM_GETTING_ADDRESS_LO:{
-						eeprom.buffer.loAddress = *SSU.SSTDR;
-						eeprom.buffer.state = EEPROM_GETTING_BYTES;
-					} break;
-
-					case EEPROM_GETTING_BYTES:{
-						eeprom.memory[((eeprom.buffer.hiAddress << 8) | eeprom.buffer.loAddress) + eeprom.buffer.offset] = *SSU.SSTDR;
-						eeprom.buffer.offset = (eeprom.buffer.offset + 1) % EEPROM_PAGE_SIZE;
-					} break;
-				}
-			}
-			// LCD
-
-			if((getMemory8(PORT1)) & LCD_DATA_PIN){ 
-				size_t lcdMemIndex = (lcd.currentPage * LCD_WIDTH * LCD_BYTES_PER_STRIPE) + lcd.currentColumn*LCD_BYTES_PER_STRIPE + lcd.currentByte;
-				assert(lcdMemIndex < LCD_MEM_SIZE);
-				lcd.memory[lcdMemIndex] = *SSU.SSTDR;	
-				if (lcd.currentByte == 1){
-					lcd.currentColumn = (lcd.currentColumn + 1);
-				}
-				lcd.currentByte = (lcd.currentByte + 1) % 2;
-			}
-			else if(~(getMemory8(PORT1)) & LCD_PIN){
-				switch(lcd.state){
-					case LCD_EMPTY:{
-						switch(*SSU.SSTDR){
-							case 0x00:
-							case 0x01:
-							case 0x02:
-							case 0x03:
-							case 0x04:
-							case 0x05:
-							case 0x06:
-							case 0x07:
-							case 0x08:
-							case 0x09:
-							case 0x0A:
-							case 0x0B:
-							case 0x0C:
-							case 0x0D:
-							case 0x0E:
-							case 0x0F:{
-								lcd.currentColumn = (*SSU.SSTDR & 0xF) | (lcd.currentColumn & 0xF0); // Set lower column address
-								lcd.currentByte = 0;
-							}break;
-							case 0x10:
-							case 0x11:
-							case 0x12:
-							case 0x13:
-							case 0x14:
-							case 0x15:
-							case 0x16:
-							case 0x17:{
-								lcd.currentColumn = ((*SSU.SSTDR & 0b111) << 4) | (lcd.currentColumn & 0xF); // Set upper column address
-								lcd.currentByte = 0;
-							} break;
-							case 0xB0:
-							case 0xB1:
-							case 0xB2:
-							case 0xB3:
-							case 0xB4:
-							case 0xB5:
-							case 0xB6:
-							case 0xB7:
-							case 0xB8:
-							case 0xB9:
-							case 0xBA:
-							case 0xBB:
-							case 0xBC:
-							case 0xBD:
-							case 0xBE:
-							case 0xBF:{
-								lcd.currentPage = *SSU.SSTDR & 0xF;
-							}break;
-							case 0xE1:{ // Exit power save mode
-								lcd.powerSave = false; // TODO: see if this is even necesary
-							}break;
-							case 0xAE:{ // Display OFF 
-								lcd.displayOn = false; 
-							}break;
-							case 0xAF:{ // Display ON 
-								lcd.displayOn = true; 
-							}break;
-							case 0x81:{
-								lcd.state = LCD_READING_CONTRAST;
-							} break;
-							default:{
-								// Well ignore most commands
-							} break;
-						}
-					} break;
-					case LCD_READING_CONTRAST:{
-						lcd.contrast = *SSU.SSTDR;
-						lcd.state = LCD_EMPTY;
-					}break;
-
-				}
-			}
-
-			//if (*SSU.SSER & 0b100){
-			// generate TX1. Maybe doesnt happen in the ROM
-			//}
-			// Here we'll start the transmission that'll take 8 cycles. But for now it happens instantly.
-			*SSU.SSSR = *SSU.SSSR | TDRE; 
-			*SSU.SSSR = *SSU.SSSR | TEND; 
-		}
-	}
-	else if (*SSU.SSER & RE){ 
-		return 1; // TODO: Check if this mode is used in the ROM
-	}
-
+	
 	if((getMemory8(PORT9)) & ACCEL_PIN){ 
 		accel.buffer.state = ACCEL_GETTING_ADDRESS;
 		accel.buffer.offset = 0x0;
@@ -2825,10 +2624,249 @@ int runNextInstruction(bool* redrawScreen, uint64_t* cycleCount){
 	uint32_t cyclesEllapsed = 2; // TODO: determine based on instruction type
 	for(uint32_t i = 0; i < cyclesEllapsed; i++){
 		*cycleCount += 1;
-		if((*cycleCount % 32768) == 0){  // Draw once every 2048 cycles for now
+		// SSU
+		if ((*cycleCount % 4) == 0){ // TODO(Custom ROMs): Parameterize 
+			if (~*SSU.SSER & TE){ // TE == 0
+				*SSU.SSSR |= TDRE; // Set TDRE
+			}
+
+			if ((*SSU.SSER & (TE | RE)) == (TE | RE)){ // Transmission and recieve enabled
+				if(~*SSU.SSSR & TDRE){ 
+					// Here we'll start the transmission that'll take 8 cycles. But for now it happens instantly.
+					// Accelerometer
+					// TODO: check all the RDRF | TDRE stuff once we begin sampling the accel, it's proablby wrong the way its coded now
+					if(~(getMemory8(PORT9)) & ACCEL_PIN){ // TODO: find more readable way to deal with pins
+						switch(accel.buffer.state){
+							case ACCEL_GETTING_ADDRESS:{
+								accel.buffer.address = *SSU.SSTDR & 0x0F; // The "&" removes 0x80 (RW flag, not part of the address)
+								accel.buffer.offset = 0;
+								accel.buffer.state = ACCEL_GETTING_BYTES;
+								*SSU.SSSR = *SSU.SSSR | RDRF; 
+							}break;
+							case ACCEL_GETTING_BYTES:{
+								*SSU.SSRDR = accel.memory[(accel.buffer.address) + accel.buffer.offset]; 
+								accel.buffer.offset += 1;
+								*SSU.SSSR = *SSU.SSSR | RDRF; 
+								*SSU.SSSR = *SSU.SSSR | TDRE; 
+								*SSU.SSSR = *SSU.SSSR | TEND; 
+							}break;
+						}
+					}
+					// EEPROM
+					else if(~(getMemory8(PORT1)) & EEPROM_PIN){ 
+						bool eepromOpFinished = false;
+						eeprom.buffer.progress += 1;
+						if (eeprom.buffer.progress == 7){
+							eeprom.buffer.progress = 0;
+							eepromOpFinished = true;
+						}
+						if (eepromOpFinished){
+							switch(eeprom.buffer.state){
+								case EEPROM_EMPTY:{
+									switch(*SSU.SSTDR){
+										case 0x3:{ // READ - read from memory
+											eeprom.buffer.state = EEPROM_GETTING_ADDRESS_HI;
+										} break;
+										case 0x5:{ // RDSR - read status register
+											eeprom.buffer.state = EEPROM_GETTING_STATUS_REGISTER;
+										} break;
+									}
+								} break;
+								case EEPROM_GETTING_STATUS_REGISTER:{
+									*SSU.SSRDR = eeprom.status; 
+									*SSU.SSSR = *SSU.SSSR | TEND;
+								} break;
+								case EEPROM_GETTING_ADDRESS_HI:{
+									eeprom.buffer.hiAddress = *SSU.SSTDR;
+									eeprom.buffer.state = EEPROM_GETTING_ADDRESS_LO;
+								} break;
+
+								case EEPROM_GETTING_ADDRESS_LO:{
+									eeprom.buffer.loAddress = *SSU.SSTDR;
+									eeprom.buffer.state = EEPROM_GETTING_BYTES;
+								} break;
+
+								case EEPROM_GETTING_BYTES:{
+									*SSU.SSRDR = eeprom.memory[((eeprom.buffer.hiAddress << 8) | eeprom.buffer.loAddress) + eeprom.buffer.offset];
+									eeprom.buffer.offset  = (eeprom.buffer.offset + 1);
+									*SSU.SSSR = *SSU.SSSR | TEND; 
+									
+								} break;
+							}
+							*SSU.SSSR = *SSU.SSSR | RDRF; // Wait for rx
+							*SSU.SSSR = *SSU.SSSR | TDRE;
+					}
+				}
+			}
+			}
+			else if (*SSU.SSER & TE){ 
+				if(~*SSU.SSSR & TDRE){ 
+					// Accelerometer
+					if(~(getMemory8(PORT9)) & ACCEL_PIN){ 
+						switch(accel.buffer.state){
+							case ACCEL_GETTING_ADDRESS:{
+								accel.buffer.address = *SSU.SSTDR;
+								accel.buffer.state = ACCEL_GETTING_BYTES;
+								*SSU.SSSR = *SSU.SSSR | RDRF; 
+							}break;
+							case ACCEL_GETTING_BYTES:{
+								accel.memory[accel.buffer.address] = *SSU.SSTDR;
+								*SSU.SSSR = *SSU.SSSR | RDRF; 
+								*SSU.SSSR = *SSU.SSSR | TDRE; 
+								*SSU.SSSR = *SSU.SSSR | TEND; 
+							}break;
+						}
+					}
+					// EEPROM
+					if(~(getMemory8(PORT1)) & EEPROM_PIN){ 
+						bool eepromOpFinished = false;
+						eeprom.buffer.progress += 1;
+						if (eeprom.buffer.progress == 7){
+							eeprom.buffer.progress = 0;
+							eepromOpFinished = true;
+						}
+						if (eepromOpFinished){
+							switch (eeprom.buffer.state) {
+								case EEPROM_EMPTY:{
+									switch(*SSU.SSTDR){
+										case 0x6:{ // WREN - write enable
+											eeprom.status |= 0x2; // WEL - write enable latch. Note: I dont see any WRDI or WRSR instructions in the ROM that disable this latch, could cause issues later on
+											*SSU.SSSR = *SSU.SSSR | TEND;
+										}break;
+										case 0x2: { // WRITE
+											eeprom.buffer.state = EEPROM_GETTING_ADDRESS_HI;
+										}break;
+									}
+
+								} break;
+								case EEPROM_GETTING_ADDRESS_HI:{
+									eeprom.buffer.hiAddress = *SSU.SSTDR;
+									eeprom.buffer.state = EEPROM_GETTING_ADDRESS_LO;
+								} break;
+
+								case EEPROM_GETTING_ADDRESS_LO:{
+									eeprom.buffer.loAddress = *SSU.SSTDR;
+									eeprom.buffer.state = EEPROM_GETTING_BYTES;
+								} break;
+
+								case EEPROM_GETTING_BYTES:{
+									eeprom.memory[((eeprom.buffer.hiAddress << 8) | eeprom.buffer.loAddress) + eeprom.buffer.offset] = *SSU.SSTDR;
+									eeprom.buffer.offset = (eeprom.buffer.offset + 1) % EEPROM_PAGE_SIZE;
+									*SSU.SSSR = *SSU.SSSR | TEND;
+								} break;
+							}
+							*SSU.SSSR = *SSU.SSSR | TDRE; 
+						}
+					}
+
+					// LCD
+					if((getMemory8(PORT1)) & LCD_DATA_PIN){ 
+						size_t lcdMemIndex = (lcd.currentPage * LCD_WIDTH * LCD_BYTES_PER_STRIPE) + lcd.currentColumn*LCD_BYTES_PER_STRIPE + lcd.currentByte;
+						assert(lcdMemIndex < LCD_MEM_SIZE);
+						lcd.memory[lcdMemIndex] = *SSU.SSTDR;	
+						if (lcd.currentByte == 1){
+						lcd.currentColumn = (lcd.currentColumn + 1);
+						}
+						lcd.currentByte = (lcd.currentByte + 1) % 2;
+						*SSU.SSSR = *SSU.SSSR | TDRE; 
+						*SSU.SSSR = *SSU.SSSR | TEND;
+					}
+					else if(~(getMemory8(PORT1)) & LCD_PIN){
+						switch(lcd.state){
+							case LCD_EMPTY:{
+								switch(*SSU.SSTDR){
+									case 0x00:
+									case 0x01:
+									case 0x02:
+									case 0x03:
+									case 0x04:
+									case 0x05:
+									case 0x06:
+									case 0x07:
+									case 0x08:
+									case 0x09:
+									case 0x0A:
+									case 0x0B:
+									case 0x0C:
+									case 0x0D:
+									case 0x0E:
+									case 0x0F:{
+										lcd.currentColumn = (*SSU.SSTDR & 0xF) | (lcd.currentColumn & 0xF0); // Set lower column address
+										lcd.currentByte = 0;
+									}break;
+									case 0x10:
+									case 0x11:
+									case 0x12:
+									case 0x13:
+									case 0x14:
+									case 0x15:
+									case 0x16:
+									case 0x17:{
+										lcd.currentColumn = ((*SSU.SSTDR & 0b111) << 4) | (lcd.currentColumn & 0xF); // Set upper column address
+										lcd.currentByte = 0;
+									} break;
+									case 0xB0:
+									case 0xB1:
+									case 0xB2:
+									case 0xB3:
+									case 0xB4:
+									case 0xB5:
+									case 0xB6:
+									case 0xB7:
+									case 0xB8:
+									case 0xB9:
+									case 0xBA:
+									case 0xBB:
+									case 0xBC:
+									case 0xBD:
+									case 0xBE:
+									case 0xBF:{
+										lcd.currentPage = *SSU.SSTDR & 0xF;
+									}break;
+									case 0xE1:{ // Exit power save mode
+										lcd.powerSave = false; // TODO: see if this is even necesary
+									}break;
+									case 0xAE:{ // Display OFF 
+										lcd.displayOn = false; 
+									}break;
+									case 0xAF:{ // Display ON 
+										lcd.displayOn = true; 
+									}break;
+									case 0x81:{
+										lcd.state = LCD_READING_CONTRAST;
+									} break;
+									default:{
+										// Well ignore most commands
+									} break;
+								}
+							} break;
+							case LCD_READING_CONTRAST:{
+								lcd.contrast = *SSU.SSTDR;
+								lcd.state = LCD_EMPTY;
+							}break;
+
+						}
+					*SSU.SSSR = *SSU.SSSR | TDRE; 
+					*SSU.SSSR = *SSU.SSSR | TEND;
+					}
+
+					//if (*SSU.SSER & 0b100){
+					// generate TX1. Maybe doesnt happen in the ROM
+					//}
+					// Here we'll start the transmission that'll take 8 cycles. But for now it happens instantly.
+					//*SSU.SSSR = *SSU.SSSR | TDRE; 
+					//*SSU.SSSR = *SSU.SSSR | TEND; 
+				}
+			}
+			else if (*SSU.SSER & RE){ 
+				return 1; // TODO: Check if this mode is used in the ROM
+			}
+		}
+		/*
+		if((*cycleCount % (SYSTEM_CLOCK_CYCLES_PER_SECOND / 30)) == 0){  // Draw once every 2048 cycles for now
 			*redrawScreen = true;
 		}
-
+		*/
 
 		if ((*cycleCount % (SYSTEM_CLOCK_CYCLES_PER_SECOND / SUB_CLOCK_CYCLES_PER_SECOND)) == 0){ 
 			subClockCyclesEllapsed += 1;
@@ -2962,6 +3000,4 @@ void initWalker(){
 	*IRQ_IRR2 = 0;
 	interruptSavedAddress = 0;
 	pc = entry;
-	dumpArrayToFile(memory, MEM_SIZE, "mem_dump");
-	dumpArrayToFile(eeprom.memory, EEPROM_SIZE, "eeprom_dump");
 }
