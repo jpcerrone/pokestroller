@@ -344,6 +344,7 @@ struct SSU_t{
 	uint8_t* SSRDR; // Recieve data register
 	uint8_t* SSTDR; // Transmit data register.
 	uint8_t SSTRSR; // Shift register.
+	uint8_t progress; // goes from 0 to 7
 };
 static struct SSU_t SSU;
 
@@ -465,7 +466,7 @@ int runNextInstruction(bool* redrawScreen, uint64_t* cycleCount){
 		*/
 		int x = 3;
 	}
-	if (pc == 0x55cc) { // Breakpoint for debugging
+	if (pc == 0x79a8) { // Breakpoint for debugging
 		/*
 		dumpArrayToFile(memory, MEM_SIZE, "mem_dump_after");
 		dumpArrayToFile(eeprom.memory, EEPROM_SIZE, "eeprom_dump_after");
@@ -2654,13 +2655,13 @@ int runNextInstruction(bool* redrawScreen, uint64_t* cycleCount){
 					}
 					// EEPROM
 					else if(~(getMemory8(PORT1)) & EEPROM_PIN){ 
-						bool eepromOpFinished = false;
-						eeprom.buffer.progress += 1;
-						if (eeprom.buffer.progress == 7){
-							eeprom.buffer.progress = 0;
-							eepromOpFinished = true;
+						bool ssuOpFinished = false;
+						SSU.progress += 1;
+						if (SSU.progress == 7){
+							SSU.progress = 0;
+							ssuOpFinished = true;
 						}
-						if (eepromOpFinished){
+						if (ssuOpFinished){
 							switch(eeprom.buffer.state){
 								case EEPROM_EMPTY:{
 									switch(*SSU.SSTDR){
@@ -2719,13 +2720,13 @@ int runNextInstruction(bool* redrawScreen, uint64_t* cycleCount){
 					}
 					// EEPROM
 					if(~(getMemory8(PORT1)) & EEPROM_PIN){ 
-						bool eepromOpFinished = false;
-						eeprom.buffer.progress += 1;
-						if (eeprom.buffer.progress == 7){
-							eeprom.buffer.progress = 0;
-							eepromOpFinished = true;
+						bool ssuOpFinished = false;
+						SSU.progress += 1;
+						if (SSU.progress == 7){
+							SSU.progress = 0;
+							ssuOpFinished = true;
 						}
-						if (eepromOpFinished){
+						if (ssuOpFinished){
 							switch (eeprom.buffer.state) {
 								case EEPROM_EMPTY:{
 									switch(*SSU.SSTDR){
@@ -2761,15 +2762,23 @@ int runNextInstruction(bool* redrawScreen, uint64_t* cycleCount){
 
 					// LCD
 					if((getMemory8(PORT1)) & LCD_DATA_PIN){ 
-						size_t lcdMemIndex = (lcd.currentPage * LCD_WIDTH * LCD_BYTES_PER_STRIPE) + lcd.currentColumn*LCD_BYTES_PER_STRIPE + lcd.currentByte;
-						assert(lcdMemIndex < LCD_MEM_SIZE);
-						lcd.memory[lcdMemIndex] = *SSU.SSTDR;	
-						if (lcd.currentByte == 1){
-						lcd.currentColumn = (lcd.currentColumn + 1);
+						bool ssuOpFinished = false;
+						SSU.progress += 1;
+						if (SSU.progress == 7){
+							SSU.progress = 0;
+							ssuOpFinished = true;
 						}
-						lcd.currentByte = (lcd.currentByte + 1) % 2;
-						*SSU.SSSR = *SSU.SSSR | TDRE; 
-						*SSU.SSSR = *SSU.SSSR | TEND;
+						if(ssuOpFinished){
+							size_t lcdMemIndex = (lcd.currentPage * LCD_WIDTH * LCD_BYTES_PER_STRIPE) + lcd.currentColumn*LCD_BYTES_PER_STRIPE + lcd.currentByte;
+							assert(lcdMemIndex < LCD_MEM_SIZE);
+							lcd.memory[lcdMemIndex] = *SSU.SSTDR;	
+							if (lcd.currentByte == 1){
+							lcd.currentColumn = (lcd.currentColumn + 1);
+							}
+							lcd.currentByte = (lcd.currentByte + 1) % 2;
+							*SSU.SSSR = *SSU.SSSR | TDRE; 
+							*SSU.SSSR = *SSU.SSSR | TEND;
+						}
 					}
 					else if(~(getMemory8(PORT1)) & LCD_PIN){
 						switch(lcd.state){
@@ -2791,6 +2800,7 @@ int runNextInstruction(bool* redrawScreen, uint64_t* cycleCount){
 									case 0x0D:
 									case 0x0E:
 									case 0x0F:{
+										*redrawScreen = true;
 										lcd.currentColumn = (*SSU.SSTDR & 0xF) | (lcd.currentColumn & 0xF0); // Set lower column address
 										lcd.currentByte = 0;
 									}break;

@@ -5,7 +5,7 @@
 #include <Windows.h>
 #include <stdio.h>
 
-#define DESIRED_FPS 60
+#define DESIRED_FPS 120
 
 static HCURSOR cursor;
 WINDOWPLACEMENT g_wpPrev = { sizeof(g_wpPrev) };
@@ -170,10 +170,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 			if(error){
 				walkerRunning = false;
 			}
-			if (redrawScreen){ 
-				
-				redrawScreen = false;
-			}
 			if (cycleCount >= SYSTEM_CLOCK_CYCLES_PER_SECOND/DESIRED_FPS){
 				float desiredFrameTimeInS = 1.0f / DESIRED_FPS;
 				cycleCount -= SYSTEM_CLOCK_CYCLES_PER_SECOND/DESIRED_FPS;
@@ -190,8 +186,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
 				}
 				startPerformanceCount = endPerformanceCount;
-				fillVideoBuffer(bitMapMemory);
-				StretchDIBits(windowDeviceContext, 0, 0, screenRes.width, screenRes.height, 0, 0, nativeRes.width, nativeRes.height, bitMapMemory, &bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
+				if (redrawScreen){
+					fillVideoBuffer(bitMapMemory);
+					StretchDIBits(windowDeviceContext, 0, 0, screenRes.width, screenRes.height, 0, 0, nativeRes.width, nativeRes.height, bitMapMemory, &bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
+					redrawScreen = true;
+				}
 				QueryPerformanceCounter(&endPerformanceCount);
 				elapsedSeconds = getEllapsedSeconds(endPerformanceCount, startPerformanceCount, performanceFrequency);
 				startPerformanceCount = endPerformanceCount;

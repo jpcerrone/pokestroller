@@ -47,7 +47,6 @@ struct Eeprom_t{
 		uint8_t loAddress;
 		enum EEPROM_STATES state;
 		uint16_t offset;
-		uint8_t progress; // goes from 0 to 7
 	} buffer;
 };
 // --
