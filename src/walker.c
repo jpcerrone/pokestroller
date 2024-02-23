@@ -396,7 +396,7 @@ void runSubClock(){
 	TimerW.on = (*CKSTPR2 & TWCKSTP) && (*TimerW.TMRW & CTS);
 }
 
-int runNextInstruction(bool* redrawScreen, uint64_t* cycleCount){
+int runNextInstruction(uint64_t* cycleCount){
 	// Skip certain instructions
 	if (pc == 0x336){ // Factory Tests
 		pc += 4;
@@ -456,7 +456,7 @@ int runNextInstruction(bool* redrawScreen, uint64_t* cycleCount){
 
 	uint32_t cdef = cd << 16 | ef;                     
 	if (pc == 0x79bc) { // Breakpoint for debugging
-		setMemory8(0xf7b5, 0x1); // common_bit_flags - RTC 1/4 second, without this the normal mode loop doesnt draw
+		//setMemory8(0xf7b5, 0x1); // common_bit_flags - RTC 1/4 second, without this the normal mode loop doesnt draw
 		int x = 3;
 	}
 	if (pc == 0x6a08) { // Breakpoint for debugging
@@ -2800,7 +2800,6 @@ int runNextInstruction(bool* redrawScreen, uint64_t* cycleCount){
 									case 0x0D:
 									case 0x0E:
 									case 0x0F:{
-										*redrawScreen = true;
 										lcd.currentColumn = (*SSU.SSTDR & 0xF) | (lcd.currentColumn & 0xF0); // Set lower column address
 										lcd.currentByte = 0;
 									}break;
@@ -3010,4 +3009,7 @@ void initWalker(){
 	*IRQ_IRR2 = 0;
 	interruptSavedAddress = 0;
 	pc = entry;
+}
+void setRTCQuarterBit(){ // TODO: replace after implementing the RTC properly
+	setMemory8(0xf7b5, 0x1); // common_bit_flags - RTC 1/4 second, without this the normal mode loop doesnt draw
 }

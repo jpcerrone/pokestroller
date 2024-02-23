@@ -3,9 +3,10 @@
 
 #include <assert.h>
 #include <Windows.h>
+#include <stdint.h>
 #include <stdio.h>
 
-#define DESIRED_FPS 120
+#define TICKS_PER_SEC 8
 
 static HCURSOR cursor;
 WINDOWPLACEMENT g_wpPrev = { sizeof(g_wpPrev) };
@@ -112,12 +113,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 		initWalker();
 		int instructionsToStep = 0;
 		walkerRunning = true;
-		bool redrawScreen = false;
 		// mode = RUN;
 		bool enter = 0;
 		bool left = 0;
 		bool right = 0;
 		uint64_t cycleCount = 0;
+		uint64_t cycleCountForRTC = 0;
 		// Timing
 		LARGE_INTEGER performanceFrequency;
 		QueryPerformanceFrequency(&performanceFrequency);
@@ -166,13 +167,20 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
 			}
 			setKeys(enter, left, right);
-			bool error = runNextInstruction(&redrawScreen, &cycleCount);
+			uint64_t cyclesExecuted = cycleCount;
+			bool error = runNextInstruction(&cyclesExecuted);
+			cycleCountForRTC += cyclesExecuted - cycleCount;
+			cycleCount = cyclesExecuted;
 			if(error){
 				walkerRunning = false;
 			}
-			if (cycleCount >= SYSTEM_CLOCK_CYCLES_PER_SECOND/DESIRED_FPS){
-				float desiredFrameTimeInS = 1.0f / DESIRED_FPS;
-				cycleCount -= SYSTEM_CLOCK_CYCLES_PER_SECOND/DESIRED_FPS;
+			if (cycleCountForRTC >= SYSTEM_CLOCK_CYCLES_PER_SECOND/4){
+				setRTCQuarterBit();
+				cycleCountForRTC -= SYSTEM_CLOCK_CYCLES_PER_SECOND/4;
+			}
+			if (cycleCount >= SYSTEM_CLOCK_CYCLES_PER_SECOND/TICKS_PER_SEC){
+				float desiredFrameTimeInS = 1.0f / TICKS_PER_SEC;
+				cycleCount -= SYSTEM_CLOCK_CYCLES_PER_SECOND/TICKS_PER_SEC;
 				LARGE_INTEGER endPerformanceCount;
 				QueryPerformanceCounter(&endPerformanceCount);
 				float elapsedSeconds = getEllapsedSeconds(endPerformanceCount, startPerformanceCount, performanceFrequency);
@@ -186,11 +194,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
 				}
 				startPerformanceCount = endPerformanceCount;
-				if (redrawScreen){
-					fillVideoBuffer(bitMapMemory);
-					StretchDIBits(windowDeviceContext, 0, 0, screenRes.width, screenRes.height, 0, 0, nativeRes.width, nativeRes.height, bitMapMemory, &bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
-					redrawScreen = true;
-				}
+				fillVideoBuffer(bitMapMemory);
+				StretchDIBits(windowDeviceContext, 0, 0, screenRes.width, screenRes.height, 0, 0, nativeRes.width, nativeRes.height, bitMapMemory, &bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
 				QueryPerformanceCounter(&endPerformanceCount);
 				elapsedSeconds = getEllapsedSeconds(endPerformanceCount, startPerformanceCount, performanceFrequency);
 				startPerformanceCount = endPerformanceCount;

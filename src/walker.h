@@ -94,6 +94,7 @@ struct Lcd_t{
 
 static bool shouldRedrawScreen;
 void initWalker();
-int runNextInstruction(bool* redrawScreen, uint64_t* cycleCount);
+int runNextInstruction(uint64_t* cycleCount);
 void fillVideoBuffer(uint32_t* videoBuffer);
 void setKeys(bool enter, bool left, bool right);
+void setRTCQuarterBit();
