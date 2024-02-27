@@ -396,7 +396,7 @@ void runSubClock(){
 	TimerW.on = (*CKSTPR2 & TWCKSTP) && (*TimerW.TMRW & CTS);
 }
 
-int runNextInstruction(uint64_t* cycleCount){
+int runNextInstruction(uint64_t* cycleCount, bool* redraw){
 	// Skip certain instructions
 	if (pc == 0x336){ // Factory Tests
 		pc += 4;
@@ -455,25 +455,31 @@ int runNextInstruction(uint64_t* cycleCount){
 	uint8_t fL = f & 0xF;
 
 	uint32_t cdef = cd << 16 | ef;                     
-	if (pc == 0x79bc) { // Breakpoint for debugging
-		//setMemory8(0xf7b5, 0x1); // common_bit_flags - RTC 1/4 second, without this the normal mode loop doesnt draw
+	if (pc == 0x1968) { // Breakpoint for debugging
+		//dumpArrayToFile(lcd.memory, LCD_MEM_SIZE, "lc_dump");
+		//memset(lcd.memory, 0, LCD_MEM_SIZE);
+		memset(lcd.memory, 0, LCD_MEM_SIZE);
+
 		int x = 3;
 	}
-	if (pc == 0x6a08) { // Breakpoint for debugging
-		/*
-		dumpArrayToFile(memory, MEM_SIZE, "mem_dump");
-		dumpArrayToFile(eeprom.memory, EEPROM_SIZE, "eeprom_dump");
-		*/
+	if (pc == 0x196c) { // Breakpoint for debuggin
 		int x = 3;
 	}
-	if (pc == 0x79a8) { // Breakpoint for debugging
-		/*
-		dumpArrayToFile(memory, MEM_SIZE, "mem_dump_after");
-		dumpArrayToFile(eeprom.memory, EEPROM_SIZE, "eeprom_dump_after");
-		*/
+	if (pc == 0x1970) { // Breakpoint for debugging
+		//dumpArrayToFile(lcd.memory, LCD_MEM_SIZE, "lc_dump");
+
+		*redraw = true;
 		int x = 3;
 	}
-	switch(aH){
+	if (pc == 0x79d8) { // Breakpoint for debugging
+		//setMemory16(0xf78e, STARTING_WATTS);
+
+		//dumpArrayToFile(lcd.memory, LCD_MEM_SIZE, "lc_dump");
+		*redraw = true;
+
+		int x = 3;
+	}
+		switch(aH){
 		case 0x0:{
 			switch(aL){
 				case 0x0:{
@@ -793,6 +799,7 @@ int runNextInstruction(uint64_t* cycleCount){
 				}break;
 				case 0x2:{
 					printInstruction("%04x - STC\n", pc); // Unused in the ROM
+					return 1; // UNIMPLEMENTED
 				}break;
 				case 0x3:{ // LDC.B Rs, CCR
 					struct RegRef8 Rs = getRegRef8(bL);
@@ -2183,27 +2190,36 @@ int runNextInstruction(uint64_t* cycleCount){
 					printRegistersState();
 				}break;
 				case 0x3:{
-					printInstruction("%04x - BTST\n", pc);
+					struct RegRef8 Rd = getRegRef8(bL);
+					int bitToTest = bH;
+					flags.Z = !(*Rd.ptr & (1<<bitToTest));
+					printInstruction("%04x - BTST #%d, r%d%c\n", pc, bitToTest, Rd.idx, Rd.loOrHiReg);
 				}break;
 				case 0x4:{
 					if (mostSignificantBit == 0x1){
 						printInstruction("%04x - BIOR\n", pc);
+						return 1; // UNIMPLEMENTED
 					}else{
 						printInstruction("%04x - BOR\n", pc);
+						return 1; // UNIMPLEMENTED
 					}
 				}break;
 				case 0x5:{
 					if (mostSignificantBit == 0x1){
 						printInstruction("%04x - BIXOR\n", pc);
+						return 1; // UNIMPLEMENTED
 					}else{
 						printInstruction("%04x - BXOR\n", pc);
+						return 1; // UNIMPLEMENTED
 					}
 				}break;
 				case 0x6:{
 					if (mostSignificantBit == 0x1){
 						printInstruction("%04x - BIAND\n", pc);
+						return 1; // UNIMPLEMENTED
 					}else{
 						printInstruction("%04x - BAND\n", pc);
+						return 1; // UNIMPLEMENTED
 					}
 				}break;
 				case 0x7:{
@@ -2366,26 +2382,33 @@ int runNextInstruction(uint64_t* cycleCount){
 						switch(cL){
 							case 0x3:{
 								printInstruction("%04x - BTST\n", pc);
+								return 1; // UNIMPLEMENTED
 							}break;
 							case 0x4:{
 								if (mostSignificantBit == 0x1){
 									printInstruction("%04x - BIOR\n", pc);
+								return 1; // UNIMPLEMENTED
 								}else{
 									printInstruction("%04x - BOR\n", pc);
+								return 1; // UNIMPLEMENTED
 								}
 							}break;
 							case 0x5:{
 								if (mostSignificantBit == 0x1){
 									printInstruction("%04x - BXOR\n", pc);
+								return 1; // UNIMPLEMENTED
 								}else{
 									printInstruction("%04x - BIXOR\n", pc);
+								return 1; // UNIMPLEMENTED
 								}
 							}break;
 							case 0x6:{
 								if (mostSignificantBit == 0x1){
 									printInstruction("%04x - BIAND\n", pc);
+								return 1; // UNIMPLEMENTED
 								}else{
 									printInstruction("%04x - BAND\n", pc);
+								return 1; // UNIMPLEMENTED
 								}
 							}break;
 							case 0x7:{
@@ -3009,6 +3032,7 @@ void initWalker(){
 	*IRQ_IRR2 = 0;
 	interruptSavedAddress = 0;
 	pc = entry;
+
 }
 void setRTCQuarterBit(){ // TODO: replace after implementing the RTC properly
 	setMemory8(0xf7b5, 0x1); // common_bit_flags - RTC 1/4 second, without this the normal mode loop doesnt draw

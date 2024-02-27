@@ -6,8 +6,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#define TICKS_PER_SEC 8
-
+#define TICKS_PER_SEC 4
 static HCURSOR cursor;
 WINDOWPLACEMENT g_wpPrev = { sizeof(g_wpPrev) };
 
@@ -125,6 +124,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
 		LARGE_INTEGER startPerformanceCount;
 		QueryPerformanceCounter(&startPerformanceCount);
+		bool redraw = false;
 		while (walkerRunning) {
 			// Process Messages
 			MSG msg = {0};
@@ -168,7 +168,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 			}
 			setKeys(enter, left, right);
 			uint64_t cyclesExecuted = cycleCount;
-			bool error = runNextInstruction(&cyclesExecuted);
+			bool error = runNextInstruction(&cyclesExecuted, &redraw);
 			cycleCountForRTC += cyclesExecuted - cycleCount;
 			cycleCount = cyclesExecuted;
 			if(error){
@@ -194,12 +194,16 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
 				}
 				startPerformanceCount = endPerformanceCount;
-				fillVideoBuffer(bitMapMemory);
-				StretchDIBits(windowDeviceContext, 0, 0, screenRes.width, screenRes.height, 0, 0, nativeRes.width, nativeRes.height, bitMapMemory, &bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
 				QueryPerformanceCounter(&endPerformanceCount);
 				elapsedSeconds = getEllapsedSeconds(endPerformanceCount, startPerformanceCount, performanceFrequency);
 				startPerformanceCount = endPerformanceCount;
 			}
+			if (redraw){
+				fillVideoBuffer(bitMapMemory);
+				StretchDIBits(windowDeviceContext, 0, 0, screenRes.width, screenRes.height, 0, 0, nativeRes.width, nativeRes.height, bitMapMemory, &bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
+				redraw = false;
+			}
+
 		}
 	}
 	// TODO: migrate stepping code

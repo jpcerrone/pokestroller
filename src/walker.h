@@ -6,6 +6,8 @@
 //#define SYSTEM_CLOCK_CYCLES_PER_SECOND 1843200/* 3.6864 MHz */
 #define SUB_CLOCK_CYCLES_PER_SECOND 32768 /* 32.768 KHz */
 
+#define STARTING_WATTS 50
+
 static const size_t MEM_SIZE = 64 * 1024;
 static const size_t EEPROM_SIZE = 64 * 1024;
 
@@ -94,7 +96,7 @@ struct Lcd_t{
 
 static bool shouldRedrawScreen;
 void initWalker();
-int runNextInstruction(uint64_t* cycleCount);
+int runNextInstruction(uint64_t* cycleCount, bool* redraw);
 void fillVideoBuffer(uint32_t* videoBuffer);
 void setKeys(bool enter, bool left, bool right);
 void setRTCQuarterBit();
