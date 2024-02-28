@@ -177,9 +177,9 @@ void fillVideoBuffer(uint32_t* videoBuffer){
 	for(int y = 0; y < LCD_HEIGHT; y++){
 		for(int x = 0; x < LCD_WIDTH; x++){
 			int yOffsetStripe = y%8;
-			uint8_t firstByteForX = (lcd.memory[2*x + lcd.currentBuffer*LCD_WIDTH*LCD_BUFFER_SEPARATION + (y/8)*LCD_WIDTH*LCD_BYTES_PER_STRIPE] & (1<<yOffsetStripe)) >> yOffsetStripe;
-			uint8_t secondByteForX = (lcd.memory[2*x + lcd.currentBuffer*LCD_WIDTH*LCD_BUFFER_SEPARATION + (y/8)*LCD_WIDTH*LCD_BYTES_PER_STRIPE + 1] & (1<<yOffsetStripe)) >> yOffsetStripe;
-			int paletteIdx = firstByteForX + secondByteForX;
+			uint8_t firstBitForX = (lcd.memory[2*x + lcd.currentBuffer*LCD_WIDTH*LCD_BUFFER_SEPARATION + (y/8)*LCD_WIDTH*LCD_BYTES_PER_STRIPE] & (1<<yOffsetStripe)) >> yOffsetStripe;
+			uint8_t secondBitForX = (lcd.memory[2*x + lcd.currentBuffer*LCD_WIDTH*LCD_BUFFER_SEPARATION + (y/8)*LCD_WIDTH*LCD_BYTES_PER_STRIPE + 1] & (1<<yOffsetStripe)) >> yOffsetStripe;
+			uint8_t paletteIdx = firstBitForX  << 1| secondBitForX;
 			uint32_t color = palette[paletteIdx];
 			videoBuffer[y*LCD_WIDTH + x] = color;
 		}
