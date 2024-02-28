@@ -174,22 +174,19 @@ void printInstruction(const char* format, ...){
 const static uint32_t palette[4] = {GRAY_3, GRAY_2, GRAY_1, GRAY_0};
 
 void fillVideoBuffer(uint32_t* videoBuffer){
-	//FILE* lcdFile;
-	//fopen_s(&lcdFile, "lcdDump.bin","wb");
-	//fwrite(lcd.memory, 1, LCD_MEM_SIZE, lcdFile);
 	for(int y = 0; y < LCD_HEIGHT; y++){
 		for(int x = 0; x < LCD_WIDTH; x++){
 			int yOffsetStripe = y%8;
-			uint8_t firstByteForX = (lcd.memory[2*x + (y/8)*LCD_WIDTH*LCD_BYTES_PER_STRIPE] & (1<<yOffsetStripe)) >> yOffsetStripe;
-			uint8_t secondByteForX = (lcd.memory[2*x + (y/8)*LCD_WIDTH*LCD_BYTES_PER_STRIPE + 1] & (1<<yOffsetStripe)) >> yOffsetStripe;
+			uint8_t firstByteForX = (lcd.memory[2*x + lcd.currentBuffer*LCD_WIDTH*LCD_BUFFER_SEPARATION + (y/8)*LCD_WIDTH*LCD_BYTES_PER_STRIPE] & (1<<yOffsetStripe)) >> yOffsetStripe;
+			uint8_t secondByteForX = (lcd.memory[2*x + lcd.currentBuffer*LCD_WIDTH*LCD_BUFFER_SEPARATION + (y/8)*LCD_WIDTH*LCD_BYTES_PER_STRIPE + 1] & (1<<yOffsetStripe)) >> yOffsetStripe;
 			int paletteIdx = firstByteForX + secondByteForX;
 			uint32_t color = palette[paletteIdx];
 			videoBuffer[y*LCD_WIDTH + x] = color;
 		}
 	}
-	//fclose(lcdFile);
-
+	lcd.currentBuffer = lcd.currentBuffer ? 0 : 1;
 }
+
 // With masking here we're ignoring the 0x00XX0000 part of the address for this emulator, as we have one big memory block that goes up to 0xFFFF
 void setMemory8(uint32_t address, uint8_t value){
 	address = address & 0x0000ffff; // Keep lower 16 bits only
@@ -396,7 +393,7 @@ void runSubClock(){
 	TimerW.on = (*CKSTPR2 & TWCKSTP) && (*TimerW.TMRW & CTS);
 }
 
-int runNextInstruction(uint64_t* cycleCount, bool* redraw){
+int runNextInstruction(uint64_t* cycleCount){
 	// Skip certain instructions
 	if (pc == 0x336){ // Factory Tests
 		pc += 4;
@@ -408,21 +405,6 @@ int runNextInstruction(uint64_t* cycleCount, bool* redraw){
 		*RL[0] = 0;
 		return 0;
 	}
-	/*
-	if (pc == 0x0822){ // Skip IR stuff for now
-		pc = 0x0828;
-		printInstruction("0x0880 Skip IR stuff for now\n");
-		return 0;
-
-	}
-	*/
-	/*
-	if (pc == 0x08d6){ // Skip IR stuff for now
-		pc = 0x0a74;
-		printInstruction("0x0886 Skip IR stuff for now\n");
-		return 0;
-	}
-	*/
 
 	uint16_t* currentInstruction = (uint16_t*)(memory + pc);
 	// IMPROVEMENT: maybe just use pointers to the ROM, left this way cause it seems cleaner
@@ -455,27 +437,11 @@ int runNextInstruction(uint64_t* cycleCount, bool* redraw){
 	uint8_t fL = f & 0xF;
 
 	uint32_t cdef = cd << 16 | ef;                     
-	if (pc == 0x1968) { // Breakpoint for debugging
-		//dumpArrayToFile(lcd.memory, LCD_MEM_SIZE, "lc_dump");
-		//memset(lcd.memory, 0, LCD_MEM_SIZE);
-		memset(lcd.memory, 0, LCD_MEM_SIZE);
-
-		int x = 3;
-	}
-	if (pc == 0x196c) { // Breakpoint for debuggin
-		int x = 3;
-	}
-	if (pc == 0x1970) { // Breakpoint for debugging
-		//dumpArrayToFile(lcd.memory, LCD_MEM_SIZE, "lc_dump");
-
-		*redraw = true;
-		int x = 3;
-	}
+	
 	if (pc == 0x79d8) { // Breakpoint for debugging
 		//setMemory16(0xf78e, STARTING_WATTS);
 
 		//dumpArrayToFile(lcd.memory, LCD_MEM_SIZE, "lc_dump");
-		*redraw = true;
 
 		int x = 3;
 	}
@@ -2885,7 +2851,6 @@ int runNextInstruction(uint64_t* cycleCount, bool* redraw){
 					//if (*SSU.SSER & 0b100){
 					// generate TX1. Maybe doesnt happen in the ROM
 					//}
-					// Here we'll start the transmission that'll take 8 cycles. But for now it happens instantly.
 					//*SSU.SSSR = *SSU.SSSR | TDRE; 
 					//*SSU.SSSR = *SSU.SSSR | TEND; 
 				}
@@ -2894,19 +2859,12 @@ int runNextInstruction(uint64_t* cycleCount, bool* redraw){
 				return 1; // TODO: Check if this mode is used in the ROM
 			}
 		}
-		/*
-		if((*cycleCount % (SYSTEM_CLOCK_CYCLES_PER_SECOND / 30)) == 0){  // Draw once every 2048 cycles for now
-			*redrawScreen = true;
-		}
-		*/
 
 		if ((*cycleCount % (SYSTEM_CLOCK_CYCLES_PER_SECOND / SUB_CLOCK_CYCLES_PER_SECOND)) == 0){ 
 			subClockCyclesEllapsed += 1;
 			runSubClock();
 		}
 	}
-	
-	// TODO: transfer clock is clk / 4 (SSU)
 	
 	return 0;	
 }

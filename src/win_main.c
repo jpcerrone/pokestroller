@@ -6,7 +6,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#define TICKS_PER_SEC 4
+#define TICKS_PER_SEC 4 /* RTC/4 */
 static HCURSOR cursor;
 WINDOWPLACEMENT g_wpPrev = { sizeof(g_wpPrev) };
 
@@ -117,14 +117,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 		bool left = 0;
 		bool right = 0;
 		uint64_t cycleCount = 0;
-		uint64_t cycleCountForRTC = 0;
 		// Timing
 		LARGE_INTEGER performanceFrequency;
 		QueryPerformanceFrequency(&performanceFrequency);
 
 		LARGE_INTEGER startPerformanceCount;
 		QueryPerformanceCounter(&startPerformanceCount);
-		bool redraw = false;
 		while (walkerRunning) {
 			// Process Messages
 			MSG msg = {0};
@@ -167,55 +165,36 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
 			}
 			setKeys(enter, left, right);
-			uint64_t cyclesExecuted = cycleCount;
-			bool error = runNextInstruction(&cyclesExecuted, &redraw);
-			cycleCountForRTC += cyclesExecuted - cycleCount;
-			cycleCount = cyclesExecuted;
+			bool error = runNextInstruction(&cycleCount);
 			if(error){
 				walkerRunning = false;
 			}
-			if (cycleCountForRTC >= SYSTEM_CLOCK_CYCLES_PER_SECOND/4){
-				setRTCQuarterBit();
-				cycleCountForRTC -= SYSTEM_CLOCK_CYCLES_PER_SECOND/4;
-			}
 			if (cycleCount >= SYSTEM_CLOCK_CYCLES_PER_SECOND/TICKS_PER_SEC){
-				float desiredFrameTimeInS = 1.0f / TICKS_PER_SEC;
 				cycleCount -= SYSTEM_CLOCK_CYCLES_PER_SECOND/TICKS_PER_SEC;
+
+				setRTCQuarterBit();
+
+				fillVideoBuffer(bitMapMemory);
+				StretchDIBits(windowDeviceContext, 0, 0, screenRes.width, screenRes.height, 0, 0, nativeRes.width, nativeRes.height, bitMapMemory, &bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
+
+				float desiredFrameTimeInS = 1.0f / TICKS_PER_SEC;
 				LARGE_INTEGER endPerformanceCount;
 				QueryPerformanceCounter(&endPerformanceCount);
 				float elapsedSeconds = getEllapsedSeconds(endPerformanceCount, startPerformanceCount, performanceFrequency);
+#ifdef DISPLAY_FRAME_TIME
 				char str[20];
 				sprintf(str, "%f\n", elapsedSeconds);
 				OutputDebugStringA(str);
+#endif
 				if (elapsedSeconds < desiredFrameTimeInS) {
 					DWORD timeToSleep = (DWORD)(1000.0f * (desiredFrameTimeInS - elapsedSeconds));
 					Sleep(timeToSleep);
 					QueryPerformanceCounter(&endPerformanceCount);
-
 				}
 				startPerformanceCount = endPerformanceCount;
-				QueryPerformanceCounter(&endPerformanceCount);
-				elapsedSeconds = getEllapsedSeconds(endPerformanceCount, startPerformanceCount, performanceFrequency);
-				startPerformanceCount = endPerformanceCount;
-			}
-			if (redraw){
-				fillVideoBuffer(bitMapMemory);
-				StretchDIBits(windowDeviceContext, 0, 0, screenRes.width, screenRes.height, 0, 0, nativeRes.width, nativeRes.height, bitMapMemory, &bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
-				redraw = false;
 			}
 
 		}
 	}
-	// TODO: migrate stepping code
-	/*
-	if (mode == RUN){
-		continue;
-	} else if(mode == STEP){
-		if (instructionsToStep == 0){
-			scanf(" %d", &instructionsToStep);
-		}
-		instructionsToStep--;
-	}
-	*/
 	return 0;
 } 

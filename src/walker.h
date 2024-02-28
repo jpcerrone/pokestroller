@@ -73,6 +73,7 @@ struct Accelerometer_t{
 #define LCD_PIN 0x1
 #define LCD_DATA_PIN 0x2
 #define LCD_WIDTH 96
+#define LCD_BUFFER_SEPARATION 16
 #define LCD_BYTES_PER_STRIPE 2
 #define LCD_HEIGHT 64
 #define LCD_MEM_WIDTH 128 // TODO: figure out way to traverse the memory without needing to simulate the bigger RAM size
@@ -91,12 +92,13 @@ struct Lcd_t{
 	uint8_t currentColumn;
 	uint8_t currentPage;
 	uint8_t currentByte;
+	bool currentBuffer;
 
 };
 
 static bool shouldRedrawScreen;
 void initWalker();
-int runNextInstruction(uint64_t* cycleCount, bool* redraw);
+int runNextInstruction(uint64_t* cycleCount);
 void fillVideoBuffer(uint32_t* videoBuffer);
 void setKeys(bool enter, bool left, bool right);
 void setRTCQuarterBit();
