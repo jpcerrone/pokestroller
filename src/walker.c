@@ -438,14 +438,17 @@ int runNextInstruction(uint64_t* cycleCount){
 
 	uint32_t cdef = cd << 16 | ef;                     
 	
-	if (pc == 0x79d8) { // Breakpoint for debugging
-		//setMemory16(0xf78e, STARTING_WATTS);
-
+	if (pc == 0x79b8) { // Breakpoint for debugging
+		setMemory16(0xf78e, STARTING_WATTS);
+	}
+	if (pc == 0x3896) { // Breakpoint for debugging
 		//dumpArrayToFile(lcd.memory, LCD_MEM_SIZE, "lc_dump");
-
 		int x = 3;
 	}
-		switch(aH){
+	if (pc == 0x47ce) { 
+		memory[0xf7c4] = 0; // HACK: Clear audio data pointer so that the dowsing minigame works
+	}
+	switch(aH){
 		case 0x0:{
 			switch(aL){
 				case 0x0:{
@@ -1146,11 +1149,24 @@ int runNextInstruction(uint64_t* cycleCount){
 				}break;
 				case 0x7:{
 					switch(bH){
-						case 0x0:
-						case 0x1:
-						case 0x3:{
-							printInstruction("%04x - NOT\n", pc);
-							return 1; // UNIMPLEMENTED
+						case 0x0:{ // NOT.b Rd
+							struct RegRef8 Rd = getRegRef8(bL);
+							*Rd.ptr = ~*Rd.ptr;
+							setFlagsMOV(*Rd.ptr, 8);
+							printInstruction("%04x - NOT.b r%d%c\n", pc, Rd.idx, Rd.loOrHiReg); 
+							printRegistersState();
+						} break;
+						case 0x1:{
+							// NOT.w Rd
+							struct RegRef16 Rd = getRegRef16(bL);
+							*Rd.ptr = ~*Rd.ptr;
+							setFlagsMOV(*Rd.ptr, 16);
+							printInstruction("%04x - NOT.w %c%d\n", pc, Rd.loOrHiReg, Rd.idx); 
+							printRegistersState();
+						} break;
+						case 0x3:{ // NOT.l Rd
+							printInstruction("%04x - NOT.l\n", pc);
+							return 1; // Unused in the ROM
 						}break;
 						case 0x5:{ // EXTU.w Rd
 							struct RegRef16 Rd = getRegRef16(bL);

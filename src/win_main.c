@@ -167,7 +167,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 			setKeys(enter, left, right);
 			bool error = runNextInstruction(&cycleCount);
 			if(error){
-				walkerRunning = false;
+				walkerRunning = false; 
 			}
 			if (cycleCount >= SYSTEM_CLOCK_CYCLES_PER_SECOND/TICKS_PER_SEC){
 				cycleCount -= SYSTEM_CLOCK_CYCLES_PER_SECOND/TICKS_PER_SEC;
