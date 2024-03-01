@@ -372,9 +372,13 @@ void runSubClock(){
 		}
 	}
 	if (TimerW.on){ // Count every subclock
-		*TimerW.TCNT += 1;
-		if ((*TimerW.TCNT == *TimerW.GRA) && (*TimerW.TCRW & CCLR)){
-			*TimerW.TCNT = 0;
+		if(*TimerW.TMRW & CTS){
+			setMemory16(0xf0f6, getMemory16(0xf0f6) + 1); // TODO: deal with 0xf0f6 constant better (TCNT ref)
+		}
+		if (getMemory16(0xf0f6)  == getMemory16(0xf0f8)){ // TCNT == GRA
+			if (*TimerW.TCRW & CCLR){
+				setMemory16(0xf0f6, 0);
+			}
 			*TimerW.TSRW |= 0x1; // IMFA
 			if (*TimerW.TIERW & 0x1){ // IMIEA - Interrupt enabled A
 				if (!flags.I){
@@ -441,12 +445,11 @@ int runNextInstruction(uint64_t* cycleCount){
 	if (pc == 0x79b8) { // Breakpoint for debugging
 		setMemory16(0xf78e, STARTING_WATTS);
 	}
-	if (pc == 0x3896) { // Breakpoint for debugging
-		//dumpArrayToFile(lcd.memory, LCD_MEM_SIZE, "lc_dump");
+	if (pc == 0x9e84) { // Breakpoint for debugging
 		int x = 3;
 	}
-	if (pc == 0x47ce) { 
-		memory[0xf7c4] = 0; // HACK: Clear audio data pointer so that the dowsing minigame works
+	if (pc == 0x9e72) { 
+		int x = 3;
 	}
 	switch(aH){
 		case 0x0:{

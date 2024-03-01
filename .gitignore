@@ -1,6 +1,6 @@
 .vs/* 
 roms/rom.bin
-roms/eeprom.bin
+roms/eeprom*.bin
 research/*
 *.exe
 *.pdb
