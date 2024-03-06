@@ -113,9 +113,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 		int instructionsToStep = 0;
 		walkerRunning = true;
 		// mode = RUN;
-		bool enter = 0;
-		bool left = 0;
-		bool right = 0;
+		uint8_t oldInput = 0;
+		uint8_t newInput = 0;
 		uint64_t cycleCount = 0;
 		// Timing
 		LARGE_INTEGER performanceFrequency;
@@ -124,35 +123,47 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 		LARGE_INTEGER startPerformanceCount;
 		QueryPerformanceCounter(&startPerformanceCount);
 		while (walkerRunning) {
+			newInput = 0;
 			// Process Messages
 			MSG msg = {0};
 			while (PeekMessage(&msg, 0, 0, 0, PM_REMOVE))
 			{
 				WPARAM key = msg.wParam;
-
+				bool keyPressed = false;
 				switch (msg.message) {
-					case WM_KEYDOWN: {
-						bool wasDown = msg.lParam & (1 << 30);
+				case WM_KEYDOWN: {
+					bool wasDown = msg.lParam & (1 << 30);
+					if (!wasDown) {
 						if (key == VK_SPACE) {
-							enter = true;
+							newInput = ENTER;
+							setKeys(newInput);
 						}
 						if (key == 'Z') {
-							left = true;
+							newInput = LEFT;
+							setKeys(newInput);
 						}
 						if (key == 'X') {
-							right = true;
-						}                    
+							newInput = RIGHT;
+							setKeys(newInput);
+						}
+					}
 					} break;
 					case WM_KEYUP: {
+						
 						if (key == VK_SPACE) {
-							enter = false;
+							newInput = 0;
+							setKeys(0);
 						}
 						if (key == 'Z') {
-							left = false;
+							newInput = 0;
+							setKeys(0);
 						}
 						if (key == 'X') {
-							right = false;
+							newInput = 0;
+							setKeys(0);
 						}
+						
+
 					}break;
 					case WM_QUIT: {
 						walkerRunning = false;
@@ -164,7 +175,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 				}
 
 			}
-			setKeys(enter, left, right);
+			/*
+			if (newInput != 0) {
+				char buf[20];
+				sprintf(buf, "%x\n", newInput);
+				OutputDebugStringA(buf);
+			}
+			oldInput = newInput;
+		*/
 			bool error = runNextInstruction(&cycleCount);
 			if(error){
 				walkerRunning = false; 

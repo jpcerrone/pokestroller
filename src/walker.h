@@ -11,6 +11,12 @@
 static const size_t MEM_SIZE = 64 * 1024;
 static const size_t EEPROM_SIZE = 64 * 1024;
 
+static bool sleep;
+
+#define ENTER (1<<0)
+#define LEFT (1<<2)
+#define RIGHT (1<<4)
+
 struct RegRef8{
 	 int idx;
 	 char loOrHiReg;
@@ -100,5 +106,6 @@ static bool shouldRedrawScreen;
 void initWalker();
 int runNextInstruction(uint64_t* cycleCount);
 void fillVideoBuffer(uint32_t* videoBuffer);
-void setKeys(bool enter, bool left, bool right);
+void setKeys(uint8_t);
 void setRTCQuarterBit();
+void wake();
