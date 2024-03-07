@@ -1389,9 +1389,16 @@ int runNextInstruction(uint64_t* cycleCount){
 						printInstruction("%04x - CMP.w %c%d,%c%d\n", pc, Rs.loOrHiReg, Rs.idx, Rd.loOrHiReg,  Rd.idx); 
 						printRegistersState();
 					}break;
-					case 0xE:{
-						printInstruction("%04x - SUBX\n", pc);
-						return 1; // UNIMPLEMENTED
+					case 0xE:{ // SUBX Rs, Rd
+						struct RegRef8 Rs = getRegRef8(bH);
+						struct RegRef8 Rd = getRegRef8(bL);
+
+						setFlagsSUB(*Rd.ptr, *Rs.ptr + flags.C, 8); // NOTE: didn't check edge cases (Rs + flag OV)
+						*Rd.ptr -= *Rs.ptr;
+						*Rd.ptr -= flags.C;
+
+						printInstruction("%04x - SUBX R%d%c,R%d%c\n", pc, Rs.idx, Rs.loOrHiReg, Rd.idx, Rd.loOrHiReg); 
+						printRegistersState();
 					}break;
 					case 0xF:{
 						switch(bH){
