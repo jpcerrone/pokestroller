@@ -123,7 +123,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 		LARGE_INTEGER startPerformanceCount;
 		QueryPerformanceCounter(&startPerformanceCount);
 		while (walkerRunning) {
-			newInput = 0;
 			// Process Messages
 			MSG msg = {0};
 			while (PeekMessage(&msg, 0, 0, 0, PM_REMOVE))
@@ -132,38 +131,32 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 				bool keyPressed = false;
 				switch (msg.message) {
 				case WM_KEYDOWN: {
-					bool wasDown = msg.lParam & (1 << 30);
-					if (!wasDown) {
+					//bool wasDown = msg.lParam & (1 << 30);
+					//if (!wasDown) {
 						if (key == VK_SPACE) {
-							newInput = ENTER;
-							setKeys(newInput);
+							newInput |= ENTER;
+							//setKeys(newInput);
 						}
 						if (key == 'Z') {
-							newInput = LEFT;
-							setKeys(newInput);
+							newInput |= LEFT;
+							//setKeys(newInput);
 						}
 						if (key == 'X') {
-							newInput = RIGHT;
-							setKeys(newInput);
+							newInput |= RIGHT;
+							//setKeys(newInput);
 						}
-					}
+					//}
 					} break;
 					case WM_KEYUP: {
-						
 						if (key == VK_SPACE) {
 							newInput = 0;
-							setKeys(0);
 						}
 						if (key == 'Z') {
 							newInput = 0;
-							setKeys(0);
 						}
 						if (key == 'X') {
 							newInput = 0;
-							setKeys(0);
 						}
-						
-
 					}break;
 					case WM_QUIT: {
 						walkerRunning = false;
@@ -181,8 +174,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 				sprintf(buf, "%x\n", newInput);
 				OutputDebugStringA(buf);
 			}
-			oldInput = newInput;
 		*/
+			setKeys(oldInput, newInput);
+			oldInput = newInput;
 			bool error = runNextInstruction(&cycleCount);
 			if(error){
 				walkerRunning = false; 
@@ -190,7 +184,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 			if (cycleCount >= SYSTEM_CLOCK_CYCLES_PER_SECOND/TICKS_PER_SEC){
 				cycleCount -= SYSTEM_CLOCK_CYCLES_PER_SECOND/TICKS_PER_SEC;
 
-				setRTCQuarterBit();
+				quarterRTCInterrupt();
 
 				fillVideoBuffer(bitMapMemory);
 				StretchDIBits(windowDeviceContext, 0, 0, screenRes.width, screenRes.height, 0, 0, nativeRes.width, nativeRes.height, bitMapMemory, &bitmapInfo, DIB_RGB_COLORS, SRCCOPY);

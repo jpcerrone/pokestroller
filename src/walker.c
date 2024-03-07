@@ -25,6 +25,8 @@ uint8_t clearBit8(uint8_t operand, int bit){
 	return operand & ~(1 << bit);			
 }
 
+static uint8_t quartersEllapsed;
+
 static int PORT1 = 0xFFD4;
 static int PORT9 = 0xFFDC;
 
@@ -41,6 +43,9 @@ static struct TimerB_t TimerB;
 #define VECTOR_TIMER_B1 0x06fa
 #define VECTOR_TIMER_W 0x3a4a
 #define VECTOR_IRQ0 0xa300
+#define VECTOR_RTC_QUARTER_SEC 0xa65e
+#define VECTOR_RTC_HALF_SEC 0xa674
+#define VECTOR_RTC_EVERY_SEC 0xa682
 
 #define CTS (1<<7)
 #define CCLR (1<<7)
@@ -84,12 +89,19 @@ static struct Flags flags;
 // Interrupts
 static uint8_t* IRQ_IENR1; // Interrupt enable register 1
 #define IEN0 (1<<0)
+#define IENRTC (1<<7)
 static uint8_t* IRQ_IENR2; // Interrupt enable register 2
 #define IENTB1 (1<<2) /* Timer B1 Interrupt Request Enable */
 static uint8_t* IRQ_IRR1; // Interrupt flag register 1
 #define IRRI0 (1<<0) /* Timer B1 Interrupt Request Flag */
 static uint8_t* IRQ_IRR2; // Interrupt flag register 2
 #define IRRTB1 (1<<2) /* Timer B1 Interrupt Request Flag */
+
+static uint8_t* RTCFLG; // RTC Interrupt Flag Register
+#define _025SEIFG (1<<0) /* When a 0.25-second periodic interrupt occurs */
+#define _05SEIFG (1<<1) /* When a 0.5-second periodic interrupt occurs */
+#define _1SEIFG (1<<2) /* When a 1-second periodic interrupt occurs */
+
 static uint16_t interruptSavedAddress;
 static struct Flags interruptSavedFlags;
 
@@ -359,22 +371,15 @@ static const uint8_t RE = 0x40; // Reception Enabled
 static uint16_t pc;
 static int instructionsToStep;
 
-void wake(){
-}
-
-static uint8_t novelInput;
-void setKeys(uint8_t input){
-	if (input == ENTER){
-		if (!flags.I){
-			novelInput = input;
-			*IRQ_IRR1 |= IRRI0;
-		}
+void setKeys(uint8_t prevInput, uint8_t input){
+	// IRQ0 is generated on rising edge only!
+	if (!flags.I && (input & ENTER) && !(prevInput & ENTER)){
+		*IRQ_IRR1 |= IRRI0;
 	}
-	else{
-		setMemory8(0xffde, (getMemory8(0xffde)) | input & 0b00111111);
+	else if(prevInput != input){
+		setMemory8(0xffde, input & 0b00111111);
+		sleep = false;
 	}
-	
-	
 }
 
 void runSubClock(){
@@ -389,7 +394,7 @@ void runSubClock(){
 		if(*TimerW.TMRW & CTS){
 			setMemory16(0xf0f6, getMemory16(0xf0f6) + 1); // TODO: deal with 0xf0f6 constant better (TCNT ref)
 		}
-		if (getMemory16(0xf0f6)  == getMemory16(0xf0f8)){ // TCNT == GRA
+		if (getMemory16(0xf0f6) == getMemory16(0xf0f8)){ // TCNT == GRA
 			if (*TimerW.TCRW & CCLR){
 				setMemory16(0xf0f6, 0);
 			}
@@ -425,7 +430,10 @@ int runNextInstruction(uint64_t* cycleCount){
 			*RL[0] = 0;
 			return 0;
 		}
-
+		if (pc == 0x7700) { // SLEEP during accelerometer, maybe needs an acc IRQ to work properly
+			pc += 2;
+			return 0;
+		}
 		uint16_t* currentInstruction = (uint16_t*)(memory + pc);
 		// IMPROVEMENT: maybe just use pointers to the ROM, left this way cause it seems cleaner
 		uint16_t ab = (*currentInstruction << 8) | (*currentInstruction >> 8); // 0xbHbL aHaL -> aHaL bHbL
@@ -460,12 +468,6 @@ int runNextInstruction(uint64_t* cycleCount){
 
 		if (pc == 0x79b8) { // Breakpoint for debugging
 			setMemory16(0xf78e, STARTING_WATTS);
-		}
-		if (pc == 0x9e84) { // Breakpoint for debugging
-			int x = 3;
-		}
-		if (pc == 0x9c32) { 
-			int x = 3;
 		}
 		switch(aH){
 			case 0x0:{
@@ -1634,7 +1636,7 @@ int runNextInstruction(uint64_t* cycleCount){
 					case 0x6:{
 						pc = interruptSavedAddress - 2; // -2?
 						flags = interruptSavedFlags;
-					printInstruction("%04x - RTE\n", pc);
+						printInstruction("%04x - RTE\n", pc);
 					}break;
 					case 0x7:{
 						printInstruction("%04x - TRAPA\n", pc);
@@ -2639,21 +2641,45 @@ int runNextInstruction(uint64_t* cycleCount){
 	// Note: Remember to check priorities when adding interrupt types here
 	// TODO: this doesnt follow this rule: 3.8.4 Conflict between Interrupt Generation and Disabling
 	if (!flags.I){
-		if ((*IRQ_IRR2 & IRRTB1) && (*IRQ_IENR2 & IENTB1)){
+		if ((*IRQ_IRR1 & IRRI0) && (*IRQ_IENR1 & IEN0)){
+			interruptSavedAddress = pc;
+			interruptSavedFlags = flags;
+			flags.I = true;
+			pc = VECTOR_IRQ0;
+			setMemory8(0xffde, ENTER & 0b00111111);
+			sleep = false;
+		}
+		else if (*IRQ_IENR1 & IENRTC){
+			if (*RTCFLG & _025SEIFG){
+				interruptSavedAddress = pc;
+				interruptSavedFlags = flags;
+				flags.I = true;
+				pc = VECTOR_RTC_QUARTER_SEC;
+				sleep = false;
+			}
+			else if (*RTCFLG & _05SEIFG){
+				interruptSavedAddress = pc;
+				interruptSavedFlags = flags;
+				flags.I = true;
+				pc = VECTOR_RTC_HALF_SEC;
+				sleep = false;
+			}
+			else if (*RTCFLG & _1SEIFG){
+				interruptSavedAddress = pc;
+				interruptSavedFlags = flags;
+				flags.I = true;
+				pc = VECTOR_RTC_EVERY_SEC;
+				sleep = false;
+			}
+		}
+		else if ((*IRQ_IRR2 & IRRTB1) && (*IRQ_IENR2 & IENTB1)){
 			interruptSavedAddress = pc;
 			interruptSavedFlags = flags;
 			flags.I = true;
 			pc = VECTOR_TIMER_B1;
 			sleep = false;
 		}
-		if ((*IRQ_IRR1 & IRRI0) && (*IRQ_IENR1 & IEN0)){
-			interruptSavedAddress = pc;
-			interruptSavedFlags = flags;
-			flags.I = true;
-			pc = VECTOR_IRQ0;
-			setMemory8(0xffde, (getMemory8(0xffde)) | novelInput & 0b00111111);
-			sleep = false;
-		}
+		
 	}
 
 	// Clock handling
@@ -3038,12 +3064,34 @@ void initWalker(){
 	*IRQ_IRR1 = 0;
 	IRQ_IRR2 = &memory[0xfff7];
 	*IRQ_IRR2 = 0;
+
+	RTCFLG = &memory[0xf067];
+	*RTCFLG = 0;
+
 	interruptSavedAddress = 0;
+
+	quartersEllapsed = 0;
+
 	pc = entry;
 
 }
 
-void setRTCQuarterBit(){ // TODO: replace after implementing the RTC properly
-	sleep = false;
-	setMemory8(0xf7b5, 0x1); // common_bit_flags - RTC 1/4 second, without this the normal mode loop doesnt draw
+void halfRTCInterrupt(){
+	*RTCFLG |= _05SEIFG ;
 }
+
+void secondRTCInterrupt(){
+	*RTCFLG |= _1SEIFG ;
+}
+
+void quarterRTCInterrupt(){
+	*RTCFLG |= _025SEIFG ;
+	quartersEllapsed += 1;
+	if((quartersEllapsed % 2) == 0){
+		halfRTCInterrupt();
+	}
+	if((quartersEllapsed % 4) == 0){
+		secondRTCInterrupt();
+	}
+}
+

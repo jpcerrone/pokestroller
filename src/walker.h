@@ -106,6 +106,5 @@ static bool shouldRedrawScreen;
 void initWalker();
 int runNextInstruction(uint64_t* cycleCount);
 void fillVideoBuffer(uint32_t* videoBuffer);
-void setKeys(uint8_t);
-void setRTCQuarterBit();
-void wake();
+void setKeys(uint8_t prevInput, uint8_t input);
+void quarterRTCInterrupt();
