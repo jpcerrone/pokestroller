@@ -5,6 +5,7 @@
 #include <Windows.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #define TICKS_PER_SEC 4 /* RTC/4 */
 static HCURSOR cursor;
@@ -113,8 +114,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 		int instructionsToStep = 0;
 		walkerRunning = true;
 		// mode = RUN;
-		uint8_t oldInput = 0;
-		uint8_t newInput = 0;
 		uint64_t cycleCount = 0;
 		// Timing
 		LARGE_INTEGER performanceFrequency;
@@ -122,7 +121,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
 		LARGE_INTEGER startPerformanceCount;
 		QueryPerformanceCounter(&startPerformanceCount);
+
 		while (walkerRunning) {
+			uint8_t newInput = 0;
 			// Process Messages
 			MSG msg = {0};
 			while (PeekMessage(&msg, 0, 0, 0, PM_REMOVE))
@@ -130,34 +131,23 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 				WPARAM key = msg.wParam;
 				bool keyPressed = false;
 				switch (msg.message) {
-				case WM_KEYDOWN: {
-					//bool wasDown = msg.lParam & (1 << 30);
-					//if (!wasDown) {
-						if (key == VK_SPACE) {
-							newInput |= ENTER;
-							//setKeys(newInput);
+					case WM_KEYDOWN: {
+						bool wasDown = msg.lParam & (1 << 30);
+						if (!wasDown) {
+							if (key == VK_SPACE) {
+								newInput |= ENTER;
+								setKeys(newInput);
+							}
+							if (key == 'Z') {
+								newInput |= LEFT;
+								setKeys(newInput);
+							}
+							if (key == 'X') {
+								newInput |= RIGHT;
+								setKeys(newInput);
+							}
 						}
-						if (key == 'Z') {
-							newInput |= LEFT;
-							//setKeys(newInput);
-						}
-						if (key == 'X') {
-							newInput |= RIGHT;
-							//setKeys(newInput);
-						}
-					//}
 					} break;
-					case WM_KEYUP: {
-						if (key == VK_SPACE) {
-							newInput = 0;
-						}
-						if (key == 'Z') {
-							newInput = 0;
-						}
-						if (key == 'X') {
-							newInput = 0;
-						}
-					}break;
 					case WM_QUIT: {
 						walkerRunning = false;
 					} break;
@@ -168,15 +158,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 				}
 
 			}
-			/*
-			if (newInput != 0) {
-				char buf[20];
-				sprintf(buf, "%x\n", newInput);
-				OutputDebugStringA(buf);
-			}
-		*/
-			setKeys(oldInput, newInput);
-			oldInput = newInput;
+
 			bool error = runNextInstruction(&cycleCount);
 			if(error){
 				walkerRunning = false; 

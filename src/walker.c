@@ -9,6 +9,7 @@
 #include <assert.h>
 
 #include "walker.h"
+#include "queue.h"
 #include "utils.c"
 /*
 enum Mode{
@@ -371,13 +372,16 @@ static const uint8_t RE = 0x40; // Reception Enabled
 static uint16_t pc;
 static int instructionsToStep;
 
-void setKeys(uint8_t prevInput, uint8_t input){
+static struct Queue inputQueue;
+
+void setKeys(uint8_t input){
 	// IRQ0 is generated on rising edge only!
-	if (!flags.I && (input & ENTER) && !(prevInput & ENTER)){
+	if (!flags.I && (input & ENTER)){
 		*IRQ_IRR1 |= IRRI0;
 	}
-	else if(prevInput != input){
-		setMemory8(0xffde, input & 0b00111111);
+	else{
+		addElement(&inputQueue, input);
+		addElement(&inputQueue, 0); // Simulate key release
 		sleep = false;
 	}
 }
@@ -433,6 +437,11 @@ int runNextInstruction(uint64_t* cycleCount){
 		if (pc == 0x7700) { // SLEEP during accelerometer, maybe needs an acc IRQ to work properly
 			pc += 2;
 			return 0;
+		}
+		if (pc == 0x9b84) { // Every time the ROM needs to read the current keys, pop an input from the input queue
+			if (!isEmpty(&inputQueue)){
+				setMemory8(0xffde, popElement(&inputQueue));
+			}
 		}
 		uint16_t* currentInstruction = (uint16_t*)(memory + pc);
 		// IMPROVEMENT: maybe just use pointers to the ROM, left this way cause it seems cleaner
@@ -2653,7 +2662,8 @@ int runNextInstruction(uint64_t* cycleCount){
 			interruptSavedFlags = flags;
 			flags.I = true;
 			pc = VECTOR_IRQ0;
-			setMemory8(0xffde, ENTER & 0b00111111);
+			addElement(&inputQueue, ENTER);
+			addElement(&inputQueue, 0);
 			sleep = false;
 		}
 		else if (*IRQ_IENR1 & IENRTC){
@@ -2949,6 +2959,7 @@ int runNextInstruction(uint64_t* cycleCount){
 }
 
 void initWalker(){
+	memset(&inputQueue, 0 , sizeof(inputQueue));
 	int entry = 0x02C4;
 	//int entry = 0x0;
 	sleep = false;
