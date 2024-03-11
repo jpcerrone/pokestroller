@@ -2,6 +2,7 @@
 PokeStroller is an experimental pokewalker emulator for windows. It can load up your eeprom memory file and lets you visualize your pokemon, scroll through the menus and play the dowsing and pokeradar minigames.
 
 ![home](https://github.com/jpcerrone/pokestroller/blob/refactor/img/home.gif)
+![menu](https://github.com/jpcerrone/pokestroller/blob/refactor/img/menu.gif)
 ![dowsing](https://github.com/jpcerrone/pokestroller/blob/refactor/img/dowsing.gif)
 ![battle](https://github.com/jpcerrone/pokestroller/blob/refactor/img/battle.gif)
 
