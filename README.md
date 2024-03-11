@@ -1,31 +1,36 @@
-## PokeStroller - a PokéWalker emulator
-PokeStroller is an experimental pokewalker emulator for windows. It can load up your eeprom memory file and lets you visualize your pokemon, scroll through the menus and play the dowsing and pokeradar minigames.
+# PokeStroller - a PokéWalker emulator
+PokeStroller is an experimental pokewalker emulator for windows. It loads up your eeprom memory file and lets you visualize your pokemon, scroll through the menus and play the dowsing and pokeradar minigames.
 
 ![home](https://github.com/jpcerrone/pokestroller/blob/refactor/img/home.gif)
 ![menu](https://github.com/jpcerrone/pokestroller/blob/refactor/img/menu.gif)
 ![dowsing](https://github.com/jpcerrone/pokestroller/blob/refactor/img/dowsing.gif)
 ![battle](https://github.com/jpcerrone/pokestroller/blob/refactor/img/battle.gif)
 
-### Running
+## Running
+To run the emulator you'll need a copy of your pokewalker's ROM and a copy of your EEPROM binary. You can dump both of these from your pokewalker using [PoroCYon's dumper for DSi/3ds](https://git.titandemo.org/PoroCYon/pokewalker-rom-dumper) or [DmitryGR's PalmOS app](https://dmitry.gr/?r=05.Projects&proj=28.%20pokewalker#_TOC_377b8050cfd1e60865685a4ca39bc4c0).
+
 Download the latest release from the "Releases" section. 
-To run the emulator you'll need a copy of the pokewalker's ROM and a copy of your EEPROM binary. You can dump both of these using PoroCYon's dumper for DSi/3ds or DmitryGR's PalmOS app.
-Place both of these files in the same folder as the emulator binary and rename them to 'eeprom.bin' and 'rom.bin' accordingly.
+
+Place both the eeprom and rom files in the same folder as the emulator binary and rename them to 'eeprom.bin' and 'rom.bin' accordingly.
+
 Run the emulator, the buttons are controlled with 'Z', 'X' and the spacebar.
 
-### TODO list
+## TODO list
 - Audio.
 - IR emulation to connect to a Nintendo DS emulator or to another pokestroller instance.
 - RTC.
 - Accelerometer simulation.
 - Save changes to eeprom file.
 - Proper RNG
+- Fix pokeRadar bug when clicking wrong bush
 
-### Compiling
-#### Windows
+## Compiling
+### Windows
 Install the MSVC build tools for windows and run build.bat from the command line
 https://learn.microsoft.com/en-us/cpp/build/building-on-the-command-line?view=msvc-170
-#### Other OS's
+### Other OS's
 Not supported yet
 
-### Contributing
+## Contributing
 Feel free to contribute by writing a PR!
+
