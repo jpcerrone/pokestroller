@@ -19,18 +19,18 @@ Run the emulator, the buttons are controlled with `Z`, `X` and the `spacebar`.
 - Audio.
 - IR emulation to connect to a Nintendo DS emulator or to another pokestroller instance.
 - RTC.
-- Accelerometer simulation.
+- Accelerometer simulation (Step counting).
 - Save changes to eeprom file.
 - Proper RNG.
 - Fix pokeRadar bug that appears when clicking the wrong bush.
 
 ## Compiling
 ### Windows
-Install the MSVC build tools for windows and run build.bat from the command line
+Install the MSVC build tools for windows and run `build.bat` from the command line
 https://learn.microsoft.com/en-us/cpp/build/building-on-the-command-line?view=msvc-170
 ### Other OS's
 Not supported yet
 
 ## Contributing
-Feel free to contribute by writing a PR!
+Feel free to contribute by opening up a PR!
 
