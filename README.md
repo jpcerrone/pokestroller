@@ -11,9 +11,9 @@ To run the emulator you'll need a copy of your pokewalker's ROM and a copy of yo
 
 Download the latest release from the "Releases" section. 
 
-Place both the eeprom and rom files in the same folder as the emulator binary and rename them to 'eeprom.bin' and 'rom.bin' accordingly.
+Place both the eeprom and rom files in the same folder as the emulator binary and rename them to `eeprom.bin` and `rom.bin` accordingly.
 
-Run the emulator, the buttons are controlled with 'Z', 'X' and the spacebar.
+Run the emulator, the buttons are controlled with `Z`, `X` and the `spacebar`.
 
 ## TODO list
 - Audio.
@@ -21,8 +21,8 @@ Run the emulator, the buttons are controlled with 'Z', 'X' and the spacebar.
 - RTC.
 - Accelerometer simulation.
 - Save changes to eeprom file.
-- Proper RNG
-- Fix pokeRadar bug when clicking wrong bush
+- Proper RNG.
+- Fix pokeRadar bug that appears when clicking the wrong bush.
 
 ## Compiling
 ### Windows
