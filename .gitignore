@@ -1,7 +1,6 @@
 .vs/* 
-roms/rom.bin
-roms/eeprom*.bin
 research/*
+bin/*
 *.exe
 *.pdb
 *.obj
@@ -9,3 +8,4 @@ research/*
 *.sln
 *.bak
 *.txt
+*.bin

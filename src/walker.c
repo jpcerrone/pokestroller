@@ -4,133 +4,47 @@
 #include <stdbool.h>
 #include <memory.h>
 #include <string.h>
-#include <stdarg.h>
-
 #include <assert.h>
 
+#include "definitions.h"
 #include "walker.h"
 #include "queue.h"
 #include "utils.c"
-/*
-enum Mode{
-	STEP,
-	RUN
-};
+#include "regRef.h"
 
-static enum Mode mode;
-*/
-
-static uint64_t subClockCyclesEllapsed;
-
-uint8_t clearBit8(uint8_t operand, int bit){
-	return operand & ~(1 << bit);			
-}
-
+// Walker variables
+static struct Queue inputQueue;
 static uint8_t quartersEllapsed;
-
-static int PORT1 = 0xFFD4;
-static int PORT9 = 0xFFDC;
-
-// Timers
-#define TMB_AUTORELOAD (1<<7)
-#define TMB_COUNTING (1<<6)
-struct TimerB_t{
-	bool on;
-	uint8_t TLBvalue;
-	uint8_t* TMB1;
-	uint8_t* TCB1;
-};
+static uint64_t subClockCyclesEllapsed;
 static struct TimerB_t TimerB;
-#define VECTOR_TIMER_B1 0x06fa
-#define VECTOR_TIMER_W 0x3a4a
-#define VECTOR_IRQ0 0xa300
-#define VECTOR_RTC_QUARTER_SEC 0xa65e
-#define VECTOR_RTC_HALF_SEC 0xa674
-#define VECTOR_RTC_EVERY_SEC 0xa682
-
-#define CTS (1<<7)
-#define CCLR (1<<7)
-struct TimerW_t{
-	bool on;
-	uint8_t* TMRW;
-	uint8_t* TCRW;
-	uint8_t* TIERW;
-	uint8_t* TSRW;
-	uint8_t* TIOR0;
-	uint8_t* TIOR1;
-	uint16_t* TCNT;
-	uint16_t* GRA;
-	uint16_t* GRB;
-	uint16_t* GRC;
-	uint16_t* GRD;
-};
-
 static struct TimerW_t TimerW;
-
 static uint8_t* CKSTPR1; // Clock halt register 1
-#define TB1CKSTP (1<<2) /* Timer B1 Module Standby */
-
 static uint8_t* CKSTPR2; // Clock halt register 2
-#define TWCKSTP (1<<6) /* Timer W Module Standby */
-
-// CCR Condition Code Register
-// I UI H U N Z V C
-struct Flags{
-	bool I; // Interrupt mask bit
-	bool UI; // User bit
-	bool H; // Half carry flag
-	bool U; // User bit
-	bool N; // Negative flag
-	bool Z; // Zero flag
-	bool V; // Overflow flag
-	bool C; // Carry flag
-};	
-static struct Flags flags;
-
-// Interrupts
+static struct Flags_t flags;
+static uint16_t pc;
 static uint8_t* IRQ_IENR1; // Interrupt enable register 1
-#define IEN0 (1<<0)
-#define IENRTC (1<<7)
 static uint8_t* IRQ_IENR2; // Interrupt enable register 2
-#define IENTB1 (1<<2) /* Timer B1 Interrupt Request Enable */
 static uint8_t* IRQ_IRR1; // Interrupt flag register 1
-#define IRRI0 (1<<0) /* Timer B1 Interrupt Request Flag */
 static uint8_t* IRQ_IRR2; // Interrupt flag register 2
-#define IRRTB1 (1<<2) /* Timer B1 Interrupt Request Flag */
-
 static uint8_t* RTCFLG; // RTC Interrupt Flag Register
-#define _025SEIFG (1<<0) /* When a 0.25-second periodic interrupt occurs */
-#define _05SEIFG (1<<1) /* When a 0.5-second periodic interrupt occurs */
-#define _1SEIFG (1<<2) /* When a 1-second periodic interrupt occurs */
-
 static uint16_t interruptSavedAddress;
-static struct Flags interruptSavedFlags;
-
-// General purpose registers
-static uint32_t* ER[8];
+static struct Flags_t interruptSavedFlags;
+static uint32_t* ER[8]; // General purpose registers
 static uint16_t* R[8];
 static uint16_t* E[8];
 static uint8_t* RL[8];
 static uint8_t* RH[8];
-
 static uint32_t* SP;
-
-void setFlags(uint8_t value){
-	flags.C = value & (1<<0);
-	flags.V = value & (1<<1);
-	flags.Z = value & (1<<2);
-	flags.N = value & (1<<3);
-	flags.U = value & (1<<4);
-	flags.H = value & (1<<5);
-	flags.UI = value & (1<<6);
-	flags.I = value & (1<<7);
-}
-
 static uint8_t* memory;
-
+static struct SSU_t SSU;
 static struct Accelerometer_t accel;
 static struct Eeprom_t eeprom;
 static struct Lcd_t lcd;
+static bool sleep;
+
+uint8_t clearBit8(uint8_t operand, int bit){
+	return operand & ~(1 << bit);			
+}
 
 struct RegRef8 getRegRef8(uint8_t operand){
 	struct RegRef8 newRef;
@@ -185,11 +99,16 @@ void printInstruction(const char* format, ...){
 #endif
 }
 
-#define GRAY_0 0x00333333
-#define GRAY_1 0x00666666
-#define GRAY_2 0x00999999
-#define GRAY_3 0x00CCCCCC
-const static uint32_t palette[4] = {GRAY_3, GRAY_2, GRAY_1, GRAY_0};
+void setFlags(uint8_t value){
+	flags.C = value & (1<<0);
+	flags.V = value & (1<<1);
+	flags.Z = value & (1<<2);
+	flags.N = value & (1<<3);
+	flags.U = value & (1<<4);
+	flags.H = value & (1<<5);
+	flags.UI = value & (1<<6);
+	flags.I = value & (1<<7);
+}
 
 void fillVideoBuffer(uint32_t* videoBuffer){
 	for(int y = 0; y < LCD_HEIGHT; y++){
@@ -349,31 +268,6 @@ void setFlagsMOV(uint32_t value, int numberOfBits){
 		}break;
 	}
 }
-
-struct SSU_t{
-	uint8_t* SSCRH; // Control register H
-	uint8_t* SSCRL; // Control register L
-	uint8_t* SSMR; // Mode register
-	uint8_t* SSER; // Enable register
-	uint8_t* SSSR; // Status register
-	uint8_t* SSRDR; // Recieve data register
-	uint8_t* SSTDR; // Transmit data register.
-	uint8_t SSTRSR; // Shift register.
-	uint8_t progress; // goes from 0 to 7
-};
-static struct SSU_t SSU;
-
-static const uint8_t RDRF = (1 << 1); // Recieve Data Register Full
-static const uint8_t TDRE = (1 << 2); // Transmit Data Register Empty
-static const uint8_t TEND = (1 << 3); // Transmit End
-static const uint8_t TE = 0x80; // Transmission Enabled
-static const uint8_t RE = 0x40; // Reception Enabled
-
-static uint16_t pc;
-static int instructionsToStep;
-
-static struct Queue inputQueue;
-
 void setKeys(uint8_t input){
 	// IRQ0 is generated on rising edge only!
 	if (!flags.I && (input & ENTER)){
@@ -396,11 +290,11 @@ void runSubClock(){
 	}
 	if (TimerW.on){ // Count every subclock
 		if(*TimerW.TMRW & CTS){
-			setMemory16(0xf0f6, getMemory16(0xf0f6) + 1); // TODO: deal with 0xf0f6 constant better (TCNT ref)
+			setMemory16(TCNT_ADDRESS, getMemory16(TCNT_ADDRESS) + 1); 
 		}
-		if (getMemory16(0xf0f6) == getMemory16(0xf0f8)){ // TCNT == GRA
+		if (getMemory16(TCNT_ADDRESS) == getMemory16(0xf0f8)){ // TCNT == GRA
 			if (*TimerW.TCRW & CCLR){
-				setMemory16(0xf0f6, 0);
+				setMemory16(TCNT_ADDRESS, 0);
 			}
 			*TimerW.TSRW |= 0x1; // IMFA
 			if (*TimerW.TIERW & 0x1){ // IMIEA - Interrupt enabled A
@@ -475,8 +369,11 @@ int runNextInstruction(uint64_t* cycleCount){
 
 		uint32_t cdef = cd << 16 | ef;                     
 
-		if (pc == 0x79b8) { // Breakpoint for debugging
+		if (pc == 0x79b8) { // Hack some watts in
 			setMemory16(0xf78e, STARTING_WATTS);
+		}		
+		if (pc == 0x9e76) { // Breakpoint for debugging
+			int x = 3;
 		}
 		switch(aH){
 			case 0x0:{
@@ -798,7 +695,7 @@ int runNextInstruction(uint64_t* cycleCount){
 						}
 					}break;
 					case 0x2:{
-					printInstruction("%04x - STC\n", pc); // Unused in the ROM
+						printInstruction("%04x - STC\n", pc); // Unused in the ROM
 						return 1; // UNIMPLEMENTED
 					}break;
 					case 0x3:{ // LDC.B Rs, CCR
@@ -809,7 +706,7 @@ int runNextInstruction(uint64_t* cycleCount){
 						printRegistersState();
 					}break;
 					case 0x4:{
-					printInstruction("%04x - ORC\n", pc);
+						printInstruction("%04x - ORC\n", pc);
 						return 1; // UNIMPLEMENTED
 					}break;
 					case 0x5:{
@@ -2115,12 +2012,8 @@ int runNextInstruction(uint64_t* cycleCount){
 
 							printInstruction("%04x - MOV.w %c%d, @-ER%d, \n", pc, Rs.loOrHiReg, Rs.idx, Rd.idx); 
 							printMemory(*Rd.ptr, 2);
-
 						}
 						printRegistersState();
-
-
-
 					} break;
 					case 0xE:{ 
 						struct RegRef8 Rd = getRegRef8(bL);
@@ -2146,8 +2039,6 @@ int runNextInstruction(uint64_t* cycleCount){
 						}
 						printRegistersState();
 						pc+=2;
-
-
 					}break;
 					case 0xF:{ 
 						struct RegRef16 Rd = getRegRef16(bL);
@@ -2380,13 +2271,8 @@ int runNextInstruction(uint64_t* cycleCount){
 							} break;
 
 						}
-
-
-
 					} break;
 					case 0xE:{
-						// Here bH is the "register designation field" dont know what that is, so ignorign it for now
-						// togetherwith bL it can also be "aa" which is the "absolute address field"
 						if (cH == 0x6){
 							switch(cL){
 								case 0x3:{
@@ -2630,8 +2516,7 @@ int runNextInstruction(uint64_t* cycleCount){
 			} break;
 		}
 
-		// SSU
-
+		// SSU cleanup
 		if((getMemory8(PORT9)) & ACCEL_PIN){ 
 			accel.buffer.state = ACCEL_GETTING_ADDRESS;
 			accel.buffer.offset = 0x0;
@@ -2642,14 +2527,6 @@ int runNextInstruction(uint64_t* cycleCount){
 			eeprom.buffer.offset = 0x0;
 			eeprom.buffer.offset = 0x0;
 		}
-
-		if(~(getMemory8(PORT1)) & LCD_DATA_PIN){ 
-			//lcd.currentColumn = 0;
-			//lcd.currentPage = 0;
-		}
-
-
-
 		pc+=2;
 
 	}
@@ -2833,6 +2710,10 @@ int runNextInstruction(uint64_t* cycleCount){
 									eeprom.buffer.offset = (eeprom.buffer.offset + 1) % EEPROM_PAGE_SIZE;
 									*SSU.SSSR = *SSU.SSSR | TEND;
 								} break;
+
+								default:{
+									return 1; // Invalid state
+								}
 							}
 							*SSU.SSSR = *SSU.SSSR | TDRE; 
 						}
@@ -2910,20 +2791,11 @@ int runNextInstruction(uint64_t* cycleCount){
 									case 0xBF:{
 										lcd.currentPage = *SSU.SSTDR & 0xF;
 									}break;
-									case 0xE1:{ // Exit power save mode
-										lcd.powerSave = false; // TODO: see if this is even necesary
-									}break;
-									case 0xAE:{ // Display OFF 
-										lcd.displayOn = false; 
-									}break;
-									case 0xAF:{ // Display ON 
-										lcd.displayOn = true; 
-									}break;
 									case 0x81:{
 										lcd.state = LCD_READING_CONTRAST;
 									} break;
 									default:{
-										// Well ignore most commands
+										// We'll ignore most commands
 									} break;
 								}
 							} break;
@@ -2936,12 +2808,6 @@ int runNextInstruction(uint64_t* cycleCount){
 					*SSU.SSSR = *SSU.SSSR | TDRE; 
 					*SSU.SSSR = *SSU.SSSR | TEND;
 					}
-
-					//if (*SSU.SSER & 0b100){
-					// generate TX1. Maybe doesnt happen in the ROM
-					//}
-					//*SSU.SSSR = *SSU.SSSR | TDRE; 
-					//*SSU.SSSR = *SSU.SSSR | TEND; 
 				}
 			}
 			else if (*SSU.SSER & RE){ 
@@ -2961,13 +2827,10 @@ int runNextInstruction(uint64_t* cycleCount){
 void initWalker(){
 	memset(&inputQueue, 0 , sizeof(inputQueue));
 	int entry = 0x02C4;
-	//int entry = 0x0;
+
 	sleep = false;
 	uint64_t subClockCyclesEllapsed = 0;
-	// 0x0000 - 0xBFFF - ROM 
-	// 0xF020 - 0xF0FF - MMIO
-	// 0xF780 - 0xFF7F - RAM 
-	// 0xFF80 - 0xFFFF - MMIO
+	
 	memory = malloc(MEM_SIZE);
 	memset(memory, 0, MEM_SIZE);
 	
@@ -2976,7 +2839,7 @@ void initWalker(){
 	memset(eeprom.memory, 0xFF, EEPROM_SIZE);
 
 #ifndef INIT_EEPROM
-	FILE *eepromFile = fopen("roms/eeprom1.bin", "r");
+	FILE *eepromFile = fopen("eeprom.bin", "r");
 	fread(eeprom.memory, 1, 64* 1024, eepromFile);
 	fclose(eepromFile);
 #endif
@@ -2987,12 +2850,11 @@ void initWalker(){
 	accel.memory[0] = 0x2; // Chip id
 
 	memset(&lcd, 0, sizeof(lcd));
-	lcd.powerSave = false; 
 	lcd.contrast = 20;
 	lcd.state = LCD_EMPTY;
 	lcd.memory = malloc(LCD_MEM_SIZE);
 
-	FILE* romFile = fopen("roms/rom.bin","r");
+	FILE* romFile = fopen("rom.bin","r");
 	if(!romFile){
 		printf("Can't find rom");
 	}
@@ -3029,7 +2891,7 @@ void initWalker(){
 		RH[i] = (uint8_t*) R[i] + 1;
 	}
 	SP = ER[7];
-	flags = (struct Flags){0};
+	flags = (struct Flags_t){0};
 	printRegistersState();
 
 	// Init Timers
@@ -3039,7 +2901,6 @@ void initWalker(){
 	TimerB.TCB1 = &memory[0xF0D1];
 	setMemory8(0xf0d1, 0); 
 	TimerB.TLBvalue = 0;
-
 	memset(&TimerW, 0, sizeof(TimerW));
 	TimerW.TMRW = &memory[0xf0f0];
 	setMemory8(0xf0f0, 0b01001000); 
@@ -3053,8 +2914,8 @@ void initWalker(){
 	setMemory8(0xf0f4, 0b10001000);
 	TimerW.TIOR1 = &memory[0xf0f5];
 	setMemory8(0xf0f5, 0b10001000);
-	TimerW.TCNT = (uint16_t*)&memory[0xf0f6];
-	setMemory16(0xf0f6, 0);
+	TimerW.TCNT = (uint16_t*)&memory[TCNT_ADDRESS];
+	setMemory16(TCNT_ADDRESS, 0);
 	TimerW.GRA = (uint16_t*)&memory[0xf0f8];
 	setMemory16(0xf0f8, 0xffff);
 	TimerW.GRB = (uint16_t*)&memory[0xf0fa];
@@ -3069,7 +2930,6 @@ void initWalker(){
 	// Init Clock halt registers
 	CKSTPR1 = &memory[0xfffa];	
 	setMemory8(0xFFFA, 0b00000011); 
-
 	CKSTPR2 = &memory[0xfffb];	
 	setMemory8(0xFFFA, 0b00000100);
 
@@ -3082,14 +2942,11 @@ void initWalker(){
 	*IRQ_IRR1 = 0;
 	IRQ_IRR2 = &memory[0xfff7];
 	*IRQ_IRR2 = 0;
-
 	RTCFLG = &memory[0xf067];
 	*RTCFLG = 0;
-
 	interruptSavedAddress = 0;
 
 	quartersEllapsed = 0;
-
 	pc = entry;
 
 }
