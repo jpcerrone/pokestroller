@@ -1,11 +1,10 @@
-#include "walker.h"
-#include "vector2i.h"
-
 #include <assert.h>
 #include <Windows.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+#include "walker.h"
 
 #define TICKS_PER_SEC 4 /* RTC/4 */
 static HCURSOR cursor;
@@ -13,10 +12,20 @@ WINDOWPLACEMENT g_wpPrev = { sizeof(g_wpPrev) };
 
 static bool walkerRunning;
 
+struct Vector2i {
+    union {
+        int x;
+        int width;
+    };
+    union {
+        int y;
+        int height;
+    };
+};
+
 float getEllapsedSeconds(LARGE_INTEGER endPerformanceCount, LARGE_INTEGER startPerformanceCount, LARGE_INTEGER performanceFrequency) {
 	LARGE_INTEGER ellapsedMicroSeconds;
 	ellapsedMicroSeconds.QuadPart = endPerformanceCount.QuadPart - startPerformanceCount.QuadPart;
-	//ellapsedMicroSeconds.QuadPart *= 1000000;
 	return (float)ellapsedMicroSeconds.QuadPart / (float)performanceFrequency.QuadPart;
 }
 
@@ -40,6 +49,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     }
     return returnVal;
 }
+
 
 // hInstance: handle to the .exe
 // hPrevInstance: not used since 16bit windows
@@ -111,9 +121,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 		ShowWindow(hwnd, nShowCmd);
 		
 		initWalker();
-		int instructionsToStep = 0;
 		walkerRunning = true;
-		// mode = RUN;
 		uint64_t cycleCount = 0;
 		// Timing
 		LARGE_INTEGER performanceFrequency;

@@ -40,7 +40,7 @@ void printQueue(struct Queue* queue){
 	printf("\n");
 
 }
-/*
+/* Tests
 int main(){
 	struct Queue q1 = {0};
 	addElement(&q1, 5);
