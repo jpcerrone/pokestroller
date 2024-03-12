@@ -489,7 +489,7 @@ int runNextInstruction(uint64_t* cycleCount){
 										pc+=4;
 									} break;
 									case 0x69:{ 
-										if (!(dH & 0x80)){ // MOV.L @ERs, ERd
+										if (!(dH & 0x8)){ // MOV.L @ERs, ERd
 											struct RegRef32 Rs = getRegRef32(dH);
 											struct RegRef32 Rd = getRegRef32(dL);
 
@@ -501,8 +501,8 @@ int runNextInstruction(uint64_t* cycleCount){
 											printInstruction("%04x - MOV.l @ER%d, ER%d\n", pc, Rs.idx, Rd.idx ); 
 											printRegistersState();
 										} else{ // MOV.l ERs, @ERd 
-											struct RegRef32 Rs = getRegRef32(bL);
-											struct RegRef32 Rd = getRegRef32(bH);
+											struct RegRef32 Rs = getRegRef32(dL);
+											struct RegRef32 Rd = getRegRef32(dH);
 											uint32_t value = *Rs.ptr;
 											setFlagsMOV(value, 32);
 											setMemory32(*Rd.ptr, value);

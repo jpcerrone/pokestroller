@@ -21,7 +21,6 @@ Run the emulator, the buttons are controlled with `Z`, `X` and the `spacebar`.
 - RTC.
 - Accelerometer simulation (Step counting).
 - Save changes to eeprom file.
-- Proper RNG.
 - Fix pokeRadar bug that appears when clicking the wrong bush.
 
 ## Compiling
