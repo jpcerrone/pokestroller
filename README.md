@@ -7,7 +7,7 @@ PokeStroller is an experimental pokewalker emulator for windows. It loads up you
 ![battle](https://github.com/jpcerrone/pokestroller/blob/master/img/battle.gif)
 
 ## Running
-To run the emulator you'll need a copy of your pokewalker's ROM and a copy of your EEPROM binary. You can dump both of these from your pokewalker using [PoroCYon's dumper for DSi/3ds](https://git.titandemo.org/PoroCYon/pokewalker-rom-dumper) or [DmitryGR's PalmOS app](https://dmitry.gr/?r=05.Projects&proj=28.%20pokewalker#_TOC_377b8050cfd1e60865685a4ca39bc4c0).
+To run the emulator you'll need a copy of your pokewalker's ROM and a copy of your EEPROM binary. You can dump both of these from your pokewalker using [PoroCYon's dumper for DSi/3ds](https://gitlab.ulyssis.org/pcy/pokewalker-rom-dumper) or [DmitryGR's PalmOS app](https://dmitry.gr/?r=05.Projects&proj=28.%20pokewalker#_TOC_377b8050cfd1e60865685a4ca39bc4c0).
 
 Download the latest release from the "Releases" section. 
 
