@@ -27,8 +27,12 @@ Run the emulator, the buttons are controlled with `Z`, `X` and the `spacebar`.
 ### Windows
 Install the MSVC build tools for windows and run `build.bat` from the command line
 https://learn.microsoft.com/en-us/cpp/build/building-on-the-command-line?view=msvc-170
-### Other OS's
-Not supported yet
+
+### Linux and MacOS
+**Note:** The emulator has only been tested on MacOS, and is quite unstable at the moment.
+
+Install the SDL2 development libraries and run `sh build.sh` from the command line.
+https://wiki.libsdl.org/SDL2/Installation
 
 ## Contributing
 Feel free to contribute by opening up a PR!
