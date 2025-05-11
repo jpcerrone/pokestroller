@@ -33,3 +33,5 @@ Not supported yet
 ## Contributing
 Feel free to contribute by opening up a PR!
 
+## Shameless plug
+Check out my ear training software for guitar! [http://gapsguitar.com/](http://gapsguitar.com/)
